@@ -1,0 +1,10 @@
+server:
+  port: ${PORT:9090}
+
+spring:
+  application:
+    name: raizestecnologia-relay
+
+logging:
+  level:
+    root: info
