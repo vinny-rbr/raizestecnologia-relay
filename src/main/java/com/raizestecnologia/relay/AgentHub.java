@@ -3,6 +3,7 @@ package com.raizestecnologia.relay;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -83,6 +84,28 @@ public class AgentHub {
         } catch (Exception e) {
             pending.remove(id);
             return new Resposta(504, "{\"success\":false,\"message\":\"Sem resposta da loja: " + e.getMessage() + "\"}");
+        }
+    }
+
+    /**
+     * Keepalive: envia um "ping" a cada agente a cada 8s. Sem isso, o proxy da nuvem (Render)
+     * fecha a conexao ociosa quando a loja nao esta sendo consultada pelo app — e a loja "some".
+     * Como o trafego parte do servidor para o agente, mantem a conexao viva nos dois sentidos.
+     */
+    @Scheduled(fixedDelay = 8000)
+    public void keepAlive() {
+        if (agents.isEmpty()) return;
+        TextMessage ping = new TextMessage("{\"type\":\"ping\"}");
+        for (WebSocketSession s : agents.values()) {
+            try {
+                if (s != null && s.isOpen()) {
+                    synchronized (s) {
+                        s.sendMessage(ping);
+                    }
+                }
+            } catch (IOException ignore) {
+                // conexao morta; sera limpa no afterConnectionClosed do handler
+            }
         }
     }
 
