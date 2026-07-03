@@ -6,3 +6,19 @@ services:
     plan: free
     healthCheckPath: /api/health
     autoDeploy: true
+    envVars:
+      # Postgres dos usuarios (em prod: string do Neon). JDBC completa.
+      - key: DATABASE_URL
+        sync: false      # ex.: jdbc:postgresql://<host>/<db>?sslmode=require
+      - key: PGUSER
+        sync: false      # default dev: postgres
+      - key: PGPASSWORD
+        sync: false      # default dev: postgres
+      # Segredo do JWT (base64 HS256). Gere um proprio em prod.
+      - key: JWT_SECRET
+        sync: false
+      # Bootstrap do DONO na primeira subida (se app_user estiver vazio).
+      - key: ADMIN_EMAIL
+        sync: false      # default: admin@raizes.com
+      - key: ADMIN_SENHA
+        sync: false      # default: raizes123
