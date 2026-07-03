@@ -1,5 +1,7 @@
 package com.raizestecnologia.relay;
 
+import com.raizestecnologia.relay.auth.CurrentUser;
+import com.raizestecnologia.relay.auth.RelayPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -8,11 +10,11 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
- * API que o app consome. Rotas de auth/empresas sao locais; o resto e repassado
- * para o agente da loja selecionada (cabecalho X-Empresa = CNPJ).
+ * API que o app consome. As rotas de auth/admin ficam nos controllers do pacote
+ * {@code auth} (AuthController/AdminController). Aqui ficam health/empresas e o
+ * repasse (catch-all) para o agente da loja selecionada (cabecalho X-Empresa = CNPJ).
  */
 @RestController
 @RequestMapping("/api")
@@ -39,23 +41,6 @@ public class RelayController {
         return env(lista);
     }
 
-    /** Login simplificado (o controle fino fica pra depois). Aceita e emite um token. */
-    @PostMapping("/auth/login")
-    public Map<String, Object> login(@RequestBody(required = false) Map<String, Object> body) {
-        String email = body == null ? "" : String.valueOf(body.getOrDefault("email", ""));
-        return env(Map.of(
-                "id", UUID.randomUUID().toString(),
-                "name", "Usuário",
-                "store", "",
-                "email", email,
-                "token", "relay-" + UUID.randomUUID()));
-    }
-
-    @PostMapping("/auth/register")
-    public Map<String, Object> register(@RequestBody(required = false) Map<String, Object> body) {
-        return login(body);
-    }
-
     /** Tudo o mais e repassado para o agente da loja (por CNPJ no cabecalho X-Empresa). */
     @RequestMapping(value = "/**", method = {RequestMethod.GET, RequestMethod.POST})
     public ResponseEntity<String> relay(HttpServletRequest request,
@@ -73,8 +58,22 @@ public class RelayController {
             return json(400, "{\"success\":false,\"message\":\"Selecione uma empresa (X-Empresa)\"}");
         }
 
+        // Autorizacao: o usuario logado so pode acessar as lojas vinculadas a ele.
+        // DONO pode qualquer loja. (O SecurityConfig do R1 ja garante autenticado aqui.)
+        RelayPrincipal principal = CurrentUser.get();
+        if (principal != null && !"DONO".equalsIgnoreCase(principal.role())) {
+            String cnpjDigits = onlyDigits(empresa);
+            if (!principal.cnpjs().contains(cnpjDigits)) {
+                return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta empresa\"}");
+            }
+        }
+
         AgentHub.Resposta r = hub.ask(empresa, request.getMethod(), path, query, body);
         return json(r.status(), r.body());
+    }
+
+    private static String onlyDigits(String s) {
+        return s == null ? "" : s.replaceAll("\\D", "");
     }
 
     private ResponseEntity<String> json(int status, String body) {

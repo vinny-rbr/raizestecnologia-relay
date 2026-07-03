@@ -5,6 +5,28 @@ spring:
   application:
     name: raizestecnologia-relay
 
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:5433/raizes_relay}
+    username: ${PGUSER:postgres}
+    password: ${PGPASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
+# Autenticacao / bootstrap do DONO (usados pelos arquivos do R1)
+relay:
+  jwt:
+    # base64 do secret HS256; sobrescreva em prod via env JWT_SECRET
+    secret: ${JWT_SECRET:cmFpemVzLXRlY25vbG9naWEtc3VwZXItc2VjcmV0LWtleS0yMDI2LWRldi1vbmx5LTEyMzQ1Ng==}
+    expiration-ms: 86400000
+  admin:
+    email: ${ADMIN_EMAIL:admin@raizes.com}
+    senha: ${ADMIN_SENHA:raizes123}
+
 logging:
   level:
     root: info
