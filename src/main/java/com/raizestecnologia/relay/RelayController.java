@@ -32,10 +32,17 @@ public class RelayController {
         return env(Map.of("status", "up", "service", "relay", "lojas", hub.empresas().size()));
     }
 
-    /** Lista as lojas (empresas) atualmente conectadas. */
+    /**
+     * Lista as lojas (empresas) conectadas que o usuario logado pode ver.
+     * DONO ve todas; OPERADOR ve apenas as vinculadas a ele (por CNPJ).
+     */
     @GetMapping("/empresas")
     public Map<String, Object> empresas() {
+        RelayPrincipal principal = CurrentUser.get();
+        boolean dono = principal != null && "DONO".equalsIgnoreCase(principal.role());
         List<Map<String, String>> lista = hub.empresas().stream()
+                .filter(e -> dono
+                        || (principal != null && principal.cnpjs().contains(onlyDigits(e.cnpj()))))
                 .map(e -> Map.of("cnpj", e.cnpj(), "nome", e.nome()))
                 .toList();
         return env(lista);
