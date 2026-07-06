@@ -36,8 +36,14 @@ public class AuthController {
         }
 
         AppUser user = users.findByEmailIgnoreCase(email.trim()).orElse(null);
-        if (user == null || !user.isAtivo() || !encoder.matches(senha, user.getSenhaHash())) {
-            return ResponseEntity.status(401).body(ApiEnvelope.fail("Credenciais invalidas"));
+        if (user == null) {
+            return ResponseEntity.status(401).body(ApiEnvelope.fail("Usuário não encontrado"));
+        }
+        if (!user.isAtivo()) {
+            return ResponseEntity.status(403).body(ApiEnvelope.fail("Usuário inativo. Fale com o administrador."));
+        }
+        if (!encoder.matches(senha, user.getSenhaHash())) {
+            return ResponseEntity.status(401).body(ApiEnvelope.fail("Senha inválida"));
         }
 
         String token = jwt.generate(user.getId(), user.getEmail(), user.getRole());
