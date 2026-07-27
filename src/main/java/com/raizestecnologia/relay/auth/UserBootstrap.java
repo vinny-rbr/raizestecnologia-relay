@@ -34,7 +34,10 @@ public class UserBootstrap implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        if (users.count() > 0) {
+        // Garante um DONO de acesso a partir de ADMIN_EMAIL/ADMIN_SENHA: se JA existe
+        // um usuario com esse email, nao mexe; senao cria (mesmo que a tabela ja tenha
+        // outros usuarios). Assim da pra recuperar acesso admin sem tocar no banco.
+        if (users.findByEmailIgnoreCase(adminEmail.trim()).isPresent()) {
             return;
         }
         AppUser dono = new AppUser();
