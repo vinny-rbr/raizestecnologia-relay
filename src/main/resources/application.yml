@@ -17,6 +17,20 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     open-in-view: false
 
+  # Email (alertas ao MASTER / cobranca). Configure via env no Render; vazio = so-log.
+  # Gmail: MAIL_HOST=smtp.gmail.com MAIL_USERNAME=vinnytecnologia@gmail.com MAIL_PASSWORD=<senha de app>
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 # Autenticacao / bootstrap do DONO (usados pelos arquivos do R1)
 relay:
   jwt:

@@ -67,6 +67,7 @@ public class AdminController {
         u.setEmail(req.email().trim());
         u.setSenhaHash(encoder.encode(req.senha()));
         u.setRole(normalizeRole(req.role()));
+        u.setPermissoes(normalizePermissoes(req.permissoes()));
         u.setAtivo(true);
         if (req.cnpjs() != null) {
             for (String raw : req.cnpjs()) {
@@ -90,6 +91,7 @@ public class AdminController {
             if (req.nome() != null) u.setNome(req.nome());
             if (req.role() != null && !req.role().isBlank()) u.setRole(normalizeRole(req.role()));
             if (req.ativo() != null) u.setAtivo(req.ativo());
+            if (req.permissoes() != null) u.setPermissoes(normalizePermissoes(req.permissoes()));
         }
         AppUser saved = users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(toDto(saved, nomesPorCnpj())));
@@ -179,8 +181,21 @@ public class AdminController {
         dto.put("email", u.getEmail());
         dto.put("role", u.getRole());
         dto.put("ativo", u.isAtivo());
+        dto.put("permissoes", u.permissoesList());
         dto.put("empresas", empresas);
         return dto;
+    }
+
+    /** Filtra a lista pros modulos conhecidos e junta em CSV; null/vazio = acesso total. */
+    private static String normalizePermissoes(List<String> perms) {
+        if (perms == null || perms.isEmpty()) return null;
+        List<String> ok = perms.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(s -> s.trim().toLowerCase())
+                .filter(Modulos.TODOS::contains)
+                .distinct()
+                .toList();
+        return ok.isEmpty() ? null : String.join(",", ok);
     }
 
     private Map<String, String> nomesPorCnpj() {
