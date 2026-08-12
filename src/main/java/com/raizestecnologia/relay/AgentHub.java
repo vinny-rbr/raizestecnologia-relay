@@ -3,6 +3,9 @@ package com.raizestecnologia.relay;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.raizestecnologia.relay.notify.AgentConnectedEvent;
+import com.raizestecnologia.relay.notify.AgentDisconnectedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
@@ -23,6 +26,11 @@ import java.util.concurrent.TimeUnit;
 public class AgentHub {
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final ApplicationEventPublisher publisher;
+
+    public AgentHub(ApplicationEventPublisher publisher) {
+        this.publisher = publisher;
+    }
 
     // cnpj -> sessao do agente da loja
     private final Map<String, WebSocketSession> agents = new ConcurrentHashMap<>();
@@ -37,10 +45,21 @@ public class AgentHub {
     public void register(String cnpj, String nome, WebSocketSession session) {
         agents.put(cnpj, session);
         names.put(cnpj, nome == null ? "" : nome);
+        publisher.publishEvent(new AgentConnectedEvent(cnpj, names.get(cnpj)));
     }
 
     public void remove(WebSocketSession session) {
-        agents.entrySet().removeIf(e -> e.getValue().getId().equals(session.getId()));
+        String cnpj = null;
+        for (Map.Entry<String, WebSocketSession> e : agents.entrySet()) {
+            if (e.getValue().getId().equals(session.getId())) {
+                cnpj = e.getKey();
+                break;
+            }
+        }
+        if (cnpj != null) {
+            agents.remove(cnpj);
+            publisher.publishEvent(new AgentDisconnectedEvent(cnpj, names.getOrDefault(cnpj, "")));
+        }
     }
 
     public List<Empresa> empresas() {

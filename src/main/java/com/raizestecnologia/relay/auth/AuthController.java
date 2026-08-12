@@ -53,6 +53,7 @@ public class AuthController {
         data.put("email", user.getEmail());
         data.put("role", user.getRole());
         data.put("store", "");
+        data.put("permissoes", user.permissoesList());
         data.put("token", token);
         return ResponseEntity.ok(ApiEnvelope.ok(data));
     }
@@ -70,6 +71,7 @@ public class AuthController {
         data.put("name", user != null && user.getNome() != null ? user.getNome() : "");
         data.put("email", p.email());
         data.put("role", p.role());
+        data.put("permissoes", user != null ? user.permissoesList() : java.util.List.of());
         return ResponseEntity.ok(ApiEnvelope.ok(data));
     }
 }

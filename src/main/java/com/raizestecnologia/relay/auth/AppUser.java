@@ -30,6 +30,13 @@ public class AppUser {
     @Column(name = "role", nullable = false)
     private String role = "OPERADOR";
 
+    /**
+     * Modulos que este usuario pode acessar, em CSV (ex.: "produtos,contagem").
+     * null ou vazio = acesso total (legado / sem restricao). DONO ignora (ve tudo).
+     */
+    @Column(name = "permissoes", length = 1000)
+    private String permissoes;
+
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
 
@@ -55,6 +62,17 @@ public class AppUser {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+
+    public String getPermissoes() { return permissoes; }
+    public void setPermissoes(String permissoes) { this.permissoes = permissoes; }
+
+    /** Modulos como lista (vazia se null/em branco = acesso total). */
+    @jakarta.persistence.Transient
+    public java.util.List<String> permissoesList() {
+        if (permissoes == null || permissoes.isBlank()) return java.util.List.of();
+        return java.util.Arrays.stream(permissoes.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+    }
 
     public boolean isAtivo() { return ativo; }
     public void setAtivo(boolean ativo) { this.ativo = ativo; }

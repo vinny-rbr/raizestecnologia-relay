@@ -31,6 +31,19 @@
       <artifactId>spring-boot-starter-websocket</artifactId>
     </dependency>
 
+    <!-- Envio de email (alertas ao MASTER, cobranca) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
+    </dependency>
+
+    <!-- Push (FCM) via Firebase Admin SDK -->
+    <dependency>
+      <groupId>com.google.firebase</groupId>
+      <artifactId>firebase-admin</artifactId>
+      <version>9.4.1</version>
+    </dependency>
+
     <!-- Persistencia dos usuarios (Postgres via JPA) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

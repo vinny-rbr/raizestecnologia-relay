@@ -49,8 +49,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     Set<String> cnpjs = vinculos.findByUserId(userId).stream()
                             .map(UserEmpresa::getCnpj)
                             .collect(Collectors.toSet());
+                    Set<String> permissoes = new java.util.HashSet<>(user.permissoesList());
                     RelayPrincipal principal = new RelayPrincipal(
-                            String.valueOf(user.getId()), user.getEmail(), user.getRole(), cnpjs);
+                            String.valueOf(user.getId()), user.getEmail(), user.getRole(), cnpjs, permissoes);
                     var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole()));
                     var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);

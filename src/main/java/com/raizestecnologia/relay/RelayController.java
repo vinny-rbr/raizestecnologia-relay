@@ -75,6 +75,12 @@ public class RelayController {
             }
         }
 
+        // Autorizacao por MODULO: usuario restrito so acessa as telas liberadas pra ele.
+        if (principal != null
+                && !principal.podeModulo(com.raizestecnologia.relay.auth.Modulos.requeridos(request.getMethod(), path))) {
+            return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta funcao\"}");
+        }
+
         AgentHub.Resposta r = hub.ask(empresa, request.getMethod(), path, query, body);
         return json(r.status(), r.body());
     }
