@@ -41,7 +41,9 @@ public class AppUser {
     private boolean ativo = true;
 
     /** true = senha definida pelo admin (provisoria); no 1o acesso o usuario deve trocar. */
-    @Column(name = "senha_provisoria", nullable = false)
+    // columnDefinition com default: o ddl-auto consegue adicionar a coluna numa tabela
+    // que ja tem linhas (Postgres preenche as existentes com false).
+    @Column(name = "senha_provisoria", nullable = false, columnDefinition = "boolean not null default false")
     private boolean senhaProvisoria = false;
 
     @Column(name = "criado_em")
