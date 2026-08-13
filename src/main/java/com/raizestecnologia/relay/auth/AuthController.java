@@ -1,6 +1,8 @@
 package com.raizestecnologia.relay.auth;
 
 import com.raizestecnologia.relay.auth.dto.LoginRequest;
+import com.raizestecnologia.relay.auth.dto.SenhaRequest;
+import jakarta.transaction.Transactional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
@@ -54,6 +56,7 @@ public class AuthController {
         data.put("role", user.getRole());
         data.put("store", "");
         data.put("permissoes", user.permissoesList());
+        data.put("senhaProvisoria", user.isSenhaProvisoria());
         data.put("token", token);
         return ResponseEntity.ok(ApiEnvelope.ok(data));
     }
@@ -73,5 +76,30 @@ public class AuthController {
         data.put("role", p.role());
         data.put("permissoes", user != null ? user.permissoesList() : java.util.List.of());
         return ResponseEntity.ok(ApiEnvelope.ok(data));
+    }
+
+    /**
+     * POST /api/auth/senha — o proprio usuario autenticado define/troca a senha dele
+     * (usado no 1o acesso, quando a senha veio provisoria do admin). Limpa o flag provisorio.
+     */
+    @PostMapping("/senha")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> trocarMinhaSenha(@RequestBody SenhaRequest req) {
+        RelayPrincipal p = CurrentUser.get();
+        if (p == null) {
+            return ResponseEntity.status(401).body(ApiEnvelope.fail("Nao autenticado"));
+        }
+        String nova = req == null ? null : req.senha();
+        if (nova == null || nova.trim().length() < 4) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("A senha precisa de ao menos 4 caracteres"));
+        }
+        AppUser user = users.findById(Long.valueOf(p.userId())).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuario nao encontrado"));
+        }
+        user.setSenhaHash(encoder.encode(nova));
+        user.setSenhaProvisoria(false);
+        users.save(user);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
     }
 }

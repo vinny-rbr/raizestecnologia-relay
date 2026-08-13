@@ -40,6 +40,10 @@ public class AppUser {
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
 
+    /** true = senha definida pelo admin (provisoria); no 1o acesso o usuario deve trocar. */
+    @Column(name = "senha_provisoria", nullable = false)
+    private boolean senhaProvisoria = false;
+
     @Column(name = "criado_em")
     private Instant criadoEm = Instant.now();
 
@@ -76,6 +80,9 @@ public class AppUser {
 
     public boolean isAtivo() { return ativo; }
     public void setAtivo(boolean ativo) { this.ativo = ativo; }
+
+    public boolean isSenhaProvisoria() { return senhaProvisoria; }
+    public void setSenhaProvisoria(boolean senhaProvisoria) { this.senhaProvisoria = senhaProvisoria; }
 
     public Instant getCriadoEm() { return criadoEm; }
     public void setCriadoEm(Instant criadoEm) { this.criadoEm = criadoEm; }

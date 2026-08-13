@@ -69,6 +69,7 @@ public class AdminController {
         u.setRole(normalizeRole(req.role()));
         u.setPermissoes(normalizePermissoes(req.permissoes()));
         u.setAtivo(true);
+        u.setSenhaProvisoria(true); // 1o acesso: o usuario troca por uma senha propria
         if (req.cnpjs() != null) {
             for (String raw : req.cnpjs()) {
                 String cnpj = normalizeCnpj(raw);
@@ -107,6 +108,7 @@ public class AdminController {
             return ResponseEntity.status(400).body(ApiEnvelope.fail("senha obrigatoria"));
         }
         u.setSenhaHash(encoder.encode(req.senha()));
+        u.setSenhaProvisoria(true); // senha definida pelo admin: usuario troca no proximo acesso
         users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
     }
