@@ -29,15 +29,18 @@ public class AdminController {
     private final PasswordEncoder encoder;
     private final AgentHub hub;
     private final com.raizestecnologia.relay.audit.AuditoriaRepository auditoria;
+    private final com.raizestecnologia.relay.loja.LojaService lojas;
 
     public AdminController(AppUserRepository users, UserEmpresaRepository vinculos,
                            PasswordEncoder encoder, AgentHub hub,
-                           com.raizestecnologia.relay.audit.AuditoriaRepository auditoria) {
+                           com.raizestecnologia.relay.audit.AuditoriaRepository auditoria,
+                           com.raizestecnologia.relay.loja.LojaService lojas) {
         this.users = users;
         this.vinculos = vinculos;
         this.encoder = encoder;
         this.hub = hub;
         this.auditoria = auditoria;
+        this.lojas = lojas;
     }
 
     // ---- Auditoria (DONO) ------------------------------------------------
@@ -182,14 +185,18 @@ public class AdminController {
 
     @GetMapping("/empresas")
     public ResponseEntity<Map<String, Object>> empresas() {
-        List<Map<String, String>> lista = hub.empresas().stream()
-                .map(e -> {
-                    Map<String, String> m = new LinkedHashMap<>();
-                    m.put("cnpj", e.cnpj());
-                    m.put("nome", e.nome());
-                    return m;
-                })
-                .toList();
+        Map<String, String> conhecidas = lojas.conhecidas();
+        for (AgentHub.Empresa e : hub.empresas()) {
+            conhecidas.putIfAbsent(e.cnpj().replaceAll("\\D", ""), e.nome());
+        }
+        List<Map<String, Object>> lista = new ArrayList<>();
+        for (var en : conhecidas.entrySet()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("cnpj", en.getKey());
+            m.put("nome", en.getValue());
+            m.put("online", hub.online(en.getKey()));
+            lista.add(m);
+        }
         return ResponseEntity.ok(ApiEnvelope.ok(lista));
     }
 

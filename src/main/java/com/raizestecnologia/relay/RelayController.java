@@ -23,10 +23,13 @@ public class RelayController {
 
     private final AgentHub hub;
     private final com.raizestecnologia.relay.audit.AuditoriaService auditoria;
+    private final com.raizestecnologia.relay.loja.LojaService lojas;
 
-    public RelayController(AgentHub hub, com.raizestecnologia.relay.audit.AuditoriaService auditoria) {
+    public RelayController(AgentHub hub, com.raizestecnologia.relay.audit.AuditoriaService auditoria,
+                           com.raizestecnologia.relay.loja.LojaService lojas) {
         this.hub = hub;
         this.auditoria = auditoria;
+        this.lojas = lojas;
     }
 
     @GetMapping("/health")
@@ -42,11 +45,22 @@ public class RelayController {
     public Map<String, Object> empresas() {
         RelayPrincipal principal = CurrentUser.get();
         boolean dono = principal != null && "DONO".equalsIgnoreCase(principal.role());
-        List<Map<String, String>> lista = hub.empresas().stream()
-                .filter(e -> dono
-                        || (principal != null && principal.cnpjs().contains(onlyDigits(e.cnpj()))))
-                .map(e -> Map.of("cnpj", e.cnpj(), "nome", e.nome()))
-                .toList();
+
+        // Todas as lojas ja conhecidas pelo servidor (inclui as offline)...
+        java.util.Map<String, String> conhecidas = lojas.conhecidas();
+        // ...mais qualquer uma online agora que ainda nao tenha sido persistida.
+        for (AgentHub.Empresa e : hub.empresas()) conhecidas.putIfAbsent(onlyDigits(e.cnpj()), e.nome());
+
+        List<Map<String, Object>> lista = new java.util.ArrayList<>();
+        for (var en : conhecidas.entrySet()) {
+            String cnpj = en.getKey();
+            if (!dono && (principal == null || !principal.cnpjs().contains(cnpj))) continue;
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("cnpj", cnpj);
+            m.put("nome", en.getValue());
+            m.put("online", hub.online(cnpj));
+            lista.add(m);
+        }
         return env(lista);
     }
 
