@@ -22,9 +22,11 @@ import java.util.Map;
 public class RelayController {
 
     private final AgentHub hub;
+    private final com.raizestecnologia.relay.audit.AuditoriaService auditoria;
 
-    public RelayController(AgentHub hub) {
+    public RelayController(AgentHub hub, com.raizestecnologia.relay.audit.AuditoriaService auditoria) {
         this.hub = hub;
+        this.auditoria = auditoria;
     }
 
     @GetMapping("/health")
@@ -82,11 +84,29 @@ public class RelayController {
         }
 
         AgentHub.Resposta r = hub.ask(empresa, request.getMethod(), path, query, body);
+
+        // Auditoria da acao de escrita (contagem de estoque).
+        if ("POST".equalsIgnoreCase(request.getMethod()) && path.endsWith("/ajuste-estoque") && r.status() == 200) {
+            auditoria.registrarAtual(onlyDigits(empresa), "ajuste_estoque",
+                    "produto " + idDoAjuste(path) + " -> " + r.body());
+        }
+
         return json(r.status(), r.body());
     }
 
     private static String onlyDigits(String s) {
         return s == null ? "" : s.replaceAll("\\D", "");
+    }
+
+    /** Extrai o id do produto de /api/produtos/{id}/ajuste-estoque. */
+    private static String idDoAjuste(String path) {
+        try {
+            String[] p = path.split("/");
+            for (int i = 0; i < p.length - 1; i++) {
+                if ("produtos".equals(p[i])) return p[i + 1];
+            }
+        } catch (Exception ignore) {}
+        return "?";
     }
 
     private ResponseEntity<String> json(int status, String body) {

@@ -21,11 +21,14 @@ public class AuthController {
     private final AppUserRepository users;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
+    private final com.raizestecnologia.relay.audit.AuditoriaService auditoria;
 
-    public AuthController(AppUserRepository users, PasswordEncoder encoder, JwtService jwt) {
+    public AuthController(AppUserRepository users, PasswordEncoder encoder, JwtService jwt,
+                          com.raizestecnologia.relay.audit.AuditoriaService auditoria) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
+        this.auditoria = auditoria;
     }
 
     /** POST /api/auth/login -> {id,name,email,role,store,token}. 401 se invalido/inativo. */
@@ -49,6 +52,7 @@ public class AuthController {
         }
 
         String token = jwt.generate(user.getId(), user.getEmail(), user.getRole());
+        auditoria.registrar(user.getId(), user.getEmail(), user.getNome(), null, "login", "login efetuado");
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", user.getId());
         data.put("name", user.getNome() == null ? "" : user.getNome());

@@ -28,13 +28,39 @@ public class AdminController {
     private final UserEmpresaRepository vinculos;
     private final PasswordEncoder encoder;
     private final AgentHub hub;
+    private final com.raizestecnologia.relay.audit.AuditoriaRepository auditoria;
 
     public AdminController(AppUserRepository users, UserEmpresaRepository vinculos,
-                           PasswordEncoder encoder, AgentHub hub) {
+                           PasswordEncoder encoder, AgentHub hub,
+                           com.raizestecnologia.relay.audit.AuditoriaRepository auditoria) {
         this.users = users;
         this.vinculos = vinculos;
         this.encoder = encoder;
         this.hub = hub;
+        this.auditoria = auditoria;
+    }
+
+    // ---- Auditoria (DONO) ------------------------------------------------
+
+    /** GET /api/admin/auditoria?cnpj=... — ultimos 200 eventos (opcionalmente por loja). */
+    @GetMapping("/auditoria")
+    public ResponseEntity<Map<String, Object>> auditoria(@RequestParam(required = false) String cnpj) {
+        List<com.raizestecnologia.relay.audit.Auditoria> lista =
+                (cnpj == null || cnpj.isBlank())
+                        ? auditoria.findTop200ByOrderByTsDesc()
+                        : auditoria.findTop200ByCnpjOrderByTsDesc(normalizeCnpj(cnpj));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (var a : lista) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("ts", a.getTs() == null ? null : a.getTs().toString());
+            m.put("email", a.getEmail());
+            m.put("nome", a.getNome());
+            m.put("cnpj", a.getCnpj());
+            m.put("acao", a.getAcao());
+            m.put("detalhe", a.getDetalhe());
+            out.add(m);
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
     // ---- Usuarios --------------------------------------------------------
