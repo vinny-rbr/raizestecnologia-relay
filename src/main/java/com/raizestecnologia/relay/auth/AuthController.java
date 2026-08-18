@@ -22,13 +22,16 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final com.raizestecnologia.relay.audit.AuditoriaService auditoria;
+    private final com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens;
 
     public AuthController(AppUserRepository users, PasswordEncoder encoder, JwtService jwt,
-                          com.raizestecnologia.relay.audit.AuditoriaService auditoria) {
+                          com.raizestecnologia.relay.audit.AuditoriaService auditoria,
+                          com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.auditoria = auditoria;
+        this.deviceTokens = deviceTokens;
     }
 
     /** POST /api/auth/login -> {id,name,email,role,store,token}. 401 se invalido/inativo. */
@@ -104,6 +107,33 @@ public class AuthController {
         user.setSenhaHash(encoder.encode(nova));
         user.setSenhaProvisoria(false);
         users.save(user);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /**
+     * POST /api/auth/excluir-conta — o proprio usuario autenticado exclui a conta dele
+     * e os dados associados (vinculos de loja + tokens de push). Exigido pela Apple
+     * (5.1.1(v)) para apps que permitem criar conta.
+     */
+    @PostMapping("/excluir-conta")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> excluirConta() {
+        RelayPrincipal p = CurrentUser.get();
+        if (p == null) {
+            return ResponseEntity.status(401).body(ApiEnvelope.fail("Nao autenticado"));
+        }
+        Long id;
+        try { id = Long.valueOf(p.userId()); }
+        catch (Exception e) { return ResponseEntity.status(400).body(ApiEnvelope.fail("Usuario invalido")); }
+
+        AppUser user = users.findById(id).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuario nao encontrado"));
+        }
+        try { deviceTokens.deleteByUserId(id); } catch (Exception ignore) {}
+        auditoria.registrar(id, user.getEmail(), user.getNome(), null, "conta_excluida",
+                "conta excluida pelo proprio usuario");
+        users.delete(user); // remove tambem os vinculos de empresa (orphanRemoval)
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
     }
 }
