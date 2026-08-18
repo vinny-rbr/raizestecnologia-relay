@@ -195,9 +195,47 @@ public class AdminController {
             m.put("cnpj", en.getKey());
             m.put("nome", en.getValue());
             m.put("online", hub.online(en.getKey()));
+            m.put("bloqueada", lojas.estaBloqueada(en.getKey()));
+            m.put("motivo", lojas.motivo(en.getKey()));
             lista.add(m);
         }
         return ResponseEntity.ok(ApiEnvelope.ok(lista));
+    }
+
+    // ---- Bloqueio de loja por pagamento (somente DONO/master) ------------
+
+    /** POST /api/admin/lojas/{cnpj}/bloquear  body opcional: {"motivo":"..."} */
+    @PostMapping("/lojas/{cnpj}/bloquear")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> bloquearLoja(@PathVariable String cnpj,
+                                                            @RequestBody(required = false) Map<String, String> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String motivo = body == null ? null : body.get("motivo");
+        lojas.bloquear(c, motivo);
+        registrarAcao(c, "loja_bloqueada", motivo == null || motivo.isBlank() ? "Pagamento pendente" : motivo);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "bloqueada", true)));
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/desbloquear */
+    @PostMapping("/lojas/{cnpj}/desbloquear")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> desbloquearLoja(@PathVariable String cnpj) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        lojas.desbloquear(c);
+        registrarAcao(c, "loja_desbloqueada", "Acesso reativado");
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "bloqueada", false)));
+    }
+
+    private void registrarAcao(String cnpj, String acao, String detalhe) {
+        RelayPrincipal p = CurrentUser.get();
+        Long uid = null;
+        try { if (p != null && p.userId() != null) uid = Long.valueOf(p.userId()); } catch (Exception ignore) {}
+        try {
+            auditoria.save(new com.raizestecnologia.relay.audit.Auditoria(
+                    uid, p == null ? null : p.email(), null, cnpj, acao, detalhe));
+        } catch (Exception ignore) {}
     }
 
     // ---- Helpers ---------------------------------------------------------

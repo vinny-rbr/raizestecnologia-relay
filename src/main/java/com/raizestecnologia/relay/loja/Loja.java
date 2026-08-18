@@ -22,6 +22,14 @@ public class Loja {
     @Column(name = "atualizado_em")
     private Instant atualizadoEm = Instant.now();
 
+    /** true = loja suspensa (pagamento pendente): os usuarios dela nao acessam o app. */
+    @Column(name = "bloqueada", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean bloqueada = false;
+
+    /** Motivo/observacao do bloqueio (mostrado ao usuario da loja). */
+    @Column(name = "motivo_bloqueio", length = 200)
+    private String motivoBloqueio;
+
     public Loja() {}
 
     public Loja(String cnpj, String nome) {
@@ -34,4 +42,8 @@ public class Loja {
     public void setNome(String nome) { this.nome = nome; }
     public Instant getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(Instant atualizadoEm) { this.atualizadoEm = atualizadoEm; }
+    public boolean isBloqueada() { return bloqueada; }
+    public void setBloqueada(boolean bloqueada) { this.bloqueada = bloqueada; }
+    public String getMotivoBloqueio() { return motivoBloqueio; }
+    public void setMotivoBloqueio(String motivoBloqueio) { this.motivoBloqueio = motivoBloqueio; }
 }

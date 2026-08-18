@@ -68,4 +68,45 @@ public class LojaService {
         }
         return m;
     }
+
+    // ---- Bloqueio por pagamento (somente o DONO/master aciona) --------------
+
+    /** true se a loja esta suspensa por pendencia (usuarios dela nao acessam). */
+    public boolean estaBloqueada(String cnpj) {
+        String c = norm(cnpj);
+        if (c.isBlank()) return false;
+        return repo.findById(c).map(Loja::isBloqueada).orElse(false);
+    }
+
+    /** Motivo do bloqueio (ou "" se nao houver). */
+    public String motivo(String cnpj) {
+        String c = norm(cnpj);
+        if (c.isBlank()) return "";
+        return repo.findById(c).map(l -> l.getMotivoBloqueio() == null ? "" : l.getMotivoBloqueio()).orElse("");
+    }
+
+    /** Suspende a loja (cria o registro se ainda nao existir). */
+    @Transactional
+    public void bloquear(String cnpj, String motivo) {
+        setBloqueio(cnpj, true, motivo);
+    }
+
+    /** Reativa a loja. */
+    @Transactional
+    public void desbloquear(String cnpj) {
+        setBloqueio(cnpj, false, null);
+    }
+
+    private void setBloqueio(String cnpj, boolean bloqueada, String motivo) {
+        String c = norm(cnpj);
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setBloqueada(bloqueada);
+        l.setMotivoBloqueio(bloqueada ? (motivo == null || motivo.isBlank() ? "Pagamento pendente" : motivo.trim()) : null);
+        repo.save(l);
+    }
+
+    private static String norm(String cnpj) {
+        return cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+    }
 }

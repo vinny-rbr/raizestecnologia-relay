@@ -59,6 +59,7 @@ public class RelayController {
             m.put("cnpj", cnpj);
             m.put("nome", en.getValue());
             m.put("online", hub.online(cnpj));
+            m.put("bloqueada", lojas.estaBloqueada(cnpj));
             lista.add(m);
         }
         return env(lista);
@@ -89,6 +90,13 @@ public class RelayController {
             if (!principal.cnpjs().contains(cnpjDigits)) {
                 return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta empresa\"}");
             }
+            // Loja suspensa por pendencia de pagamento: bloqueia os usuarios dela
+            // (o DONO/master continua acessando para poder administrar).
+            if (lojas.estaBloqueada(cnpjDigits)) {
+                String motivo = lojas.motivo(cnpjDigits);
+                String msg = motivo.isBlank() ? "Acesso suspenso. Fale com o suporte." : motivo;
+                return json(402, "{\"success\":false,\"bloqueada\":true,\"message\":\"" + escape(msg) + "\"}");
+            }
         }
 
         // Autorizacao por MODULO: usuario restrito so acessa as telas liberadas pra ele.
@@ -110,6 +118,11 @@ public class RelayController {
 
     private static String onlyDigits(String s) {
         return s == null ? "" : s.replaceAll("\\D", "");
+    }
+
+    /** Escapa aspas/barra pra montar o JSON manual da mensagem de bloqueio. */
+    private static String escape(String s) {
+        return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /** Extrai o id do produto de /api/produtos/{id}/ajuste-estoque. */
