@@ -228,6 +228,17 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "bloqueada", false)));
     }
 
+    /** DELETE /api/admin/lojas/{cnpj} — remove a loja do registro (loja desativada/errada). */
+    @DeleteMapping("/lojas/{cnpj}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> removerLoja(@PathVariable String cnpj) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        lojas.remover(c);
+        registrarAcao(c, "loja_removida", "Loja removida do registro");
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "removida", true)));
+    }
+
     private void registrarAcao(String cnpj, String acao, String detalhe) {
         RelayPrincipal p = CurrentUser.get();
         Long uid = null;

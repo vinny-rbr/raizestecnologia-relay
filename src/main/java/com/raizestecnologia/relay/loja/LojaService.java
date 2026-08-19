@@ -91,15 +91,29 @@ public class LojaService {
         setBloqueio(cnpj, true, motivo);
     }
 
-    /** Reativa a loja. */
+    /** Reativa a loja (no-op se ela nem existe/estava bloqueada). */
     @Transactional
     public void desbloquear(String cnpj) {
-        setBloqueio(cnpj, false, null);
+        String c = norm(cnpj);
+        if (c.isBlank()) return;
+        repo.findById(c).ifPresent(l -> {
+            l.setBloqueada(false);
+            l.setMotivoBloqueio(null);
+            repo.save(l);
+        });
+    }
+
+    /** Remove uma loja do registro (ex.: loja desativada / cadastro errado). */
+    @Transactional
+    public void remover(String cnpj) {
+        String c = norm(cnpj);
+        if (!c.isBlank()) repo.deleteById(c);
     }
 
     private void setBloqueio(String cnpj, boolean bloqueada, String motivo) {
         String c = norm(cnpj);
         if (c.isBlank()) return;
+        // Bloquear pode criar o registro (permite suspender antes do 1o acesso).
         Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
         l.setBloqueada(bloqueada);
         l.setMotivoBloqueio(bloqueada ? (motivo == null || motivo.isBlank() ? "Pagamento pendente" : motivo.trim()) : null);
