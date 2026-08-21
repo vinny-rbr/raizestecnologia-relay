@@ -20,5 +20,11 @@ COPY --from=build /app/target/*.jar app.jar
 #   ADMIN_EMAIL  email do DONO criado no bootstrap (default admin@raizes.com)
 #   ADMIN_SENHA  senha do DONO criado no bootstrap (default raizes123)
 ENV PORT=9090
+# Limites de memoria da JVM para caber nos 512MB do Render (evita OOM/reinicio):
+#  - SerialGC: menor overhead de memoria que o G1 (ideal p/ instancia pequena)
+#  - MaxRAMPercentage=45: heap ~230MB, deixando folga p/ metaspace + threads + nativo
+#  - Xss512k: reduz o stack por thread (com dezenas de threads, economiza bastante)
+# Pode sobrescrever via env JAVA_TOOL_OPTIONS no Render, se precisar.
+ENV JAVA_TOOL_OPTIONS="-XX:+UseSerialGC -XX:MaxRAMPercentage=45.0 -Xss512k"
 EXPOSE 9090
 CMD ["java", "-jar", "app.jar"]

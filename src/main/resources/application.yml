@@ -1,5 +1,13 @@
 server:
   port: ${PORT:9090}
+  # Instancia pequena (Render 512MB, poucas lojas): limita threads pra caber na RAM.
+  # ~200 threads * 1MB de stack era o maior peso de memoria do processo.
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:25}
+      min-spare: 3
+    max-connections: 150
+    accept-count: 50
 
 spring:
   application:
@@ -10,6 +18,9 @@ spring:
     username: ${PGUSER:postgres}
     password: ${PGPASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:5}
+      minimum-idle: 1
 
   jpa:
     hibernate:
