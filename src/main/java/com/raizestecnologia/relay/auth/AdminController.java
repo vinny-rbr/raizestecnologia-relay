@@ -198,7 +198,8 @@ public class AdminController {
             m.put("bloqueada", lojas.estaBloqueada(en.getKey()));
             m.put("motivo", lojas.motivo(en.getKey()));
             java.time.Instant ativ = lojas.ativadaEm(en.getKey());
-            Double mens = lojas.mensalidade(en.getKey());
+            Double mensStored = lojas.mensalidade(en.getKey());
+            double mens = mensStored != null ? mensStored : MENSALIDADE_PADRAO; // R$30 padrão
             m.put("ativadaEm", ativ == null ? null : ativ.toString());
             m.put("diasUso", diasUso(ativ));
             m.put("mensalidade", mens);
@@ -254,7 +255,8 @@ public class AdminController {
             out.put("cnpj", c);
             out.put("ativadaEm", quando.toString());
             out.put("diasUso", diasUso(quando));
-            out.putAll(cobranca(quando, lojas.mensalidade(c)));
+            Double ms = lojas.mensalidade(c);
+            out.putAll(cobranca(quando, ms != null ? ms : MENSALIDADE_PADRAO));
             return ResponseEntity.ok(ApiEnvelope.ok(out));
         } catch (Exception e) {
             return ResponseEntity.status(400).body(ApiEnvelope.fail("data invalida (use YYYY-MM-DD)"));
@@ -298,6 +300,7 @@ public class AdminController {
     /** Regra de cobrança: mensalidade vence todo dia 5; implantação (uma vez) na 1a cobrança;
      *  a 1a cobrança é proporcional (do dia da instalação até o dia 5). */
     static final double IMPLANTACAO = 50.0;
+    static final double MENSALIDADE_PADRAO = 30.0; // padrão quando o master não define outro valor
     private static final int DIA_COBRANCA = 5;
 
     /** Monta os campos de cobrança (proximaCobranca, primeiraCobranca, valorProximaCobranca). */
