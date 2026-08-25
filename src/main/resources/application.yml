@@ -46,6 +46,8 @@ spring:
 asaas:
   base-url: ${ASAAS_BASE_URL:https://sandbox.asaas.com/api/v3}
   api-key: ${ASAAS_API_KEY:}
+  # Token do webhook (Asaas manda no header asaas-access-token). Vazio = não valida.
+  webhook-token: ${ASAAS_WEBHOOK_TOKEN:}
 
 # Autenticacao / bootstrap do DONO (usados pelos arquivos do R1)
 relay:

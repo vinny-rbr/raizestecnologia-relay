@@ -19,9 +19,12 @@ public class CobrancaController {
 
     private static final Logger log = LoggerFactory.getLogger(CobrancaController.class);
     private final CobrancaService cobranca;
+    private final String webhookToken;
 
-    public CobrancaController(CobrancaService cobranca) {
+    public CobrancaController(CobrancaService cobranca,
+                             @org.springframework.beans.factory.annotation.Value("${asaas.webhook-token:}") String webhookToken) {
         this.cobranca = cobranca;
+        this.webhookToken = webhookToken == null ? "" : webhookToken.trim();
     }
 
     /** POST /api/admin/lojas/{cnpj}/cobranca  body opcional: {"email":"cliente@..."} — gera a fatura do item pendente + assinatura. */
@@ -84,7 +87,14 @@ public class CobrancaController {
 
     /** POST /webhooks/asaas — o Asaas notifica mudanças de pagamento (público). */
     @PostMapping("/webhooks/asaas")
-    public ResponseEntity<Map<String, Object>> webhook(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<Map<String, Object>> webhook(
+            @RequestHeader(value = "asaas-access-token", required = false) String token,
+            @RequestBody Map<String, Object> payload) {
+        // Se um token está configurado, exige que bata (evita "pagou" falso).
+        if (!webhookToken.isBlank() && !webhookToken.equals(token == null ? "" : token.trim())) {
+            log.warn("[asaas-webhook] token invalido — ignorado");
+            return ResponseEntity.status(401).body(Map.of("received", false));
+        }
         try {
             String event = String.valueOf(payload.get("event"));
             Object pObj = payload.get("payment");
