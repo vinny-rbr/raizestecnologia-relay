@@ -37,6 +37,11 @@ public class CobrancaService {
         this.lojas = lojas;
     }
 
+    // Diagnóstico do Asaas (só leitura).
+    public boolean asaasEnabled() { return asaas.enabled(); }
+    public String asaasBaseUrl() { return asaas.baseUrl(); }
+    public String asaasContaNome() throws Exception { return asaas.contaNome(); }
+
     /** Estado de cobrança atual da loja (o que está pendente agora). */
     public record Estado(String fase, boolean implantacaoPaga, String item, double valor,
                          String vencimento, boolean primeiraMensalidade) {}

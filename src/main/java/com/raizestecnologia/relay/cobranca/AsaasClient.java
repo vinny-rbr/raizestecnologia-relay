@@ -41,6 +41,17 @@ public class AsaasClient {
         return !apiKey.isBlank();
     }
 
+    public String baseUrl() { return baseUrl; }
+
+    /** Nome da conta Asaas ativa (só leitura) — pra confirmar sandbox x produção. */
+    public String contaNome() throws Exception {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + "/myAccount"))
+                .header("access_token", apiKey).timeout(Duration.ofSeconds(20)).GET().build();
+        HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
+        JsonNode node = json.readTree(res.body() == null || res.body().isBlank() ? "{}" : res.body());
+        return node.path("name").asText(null);
+    }
+
     /** Cria (ou reaproveita) o cliente no Asaas e devolve o id (cus_...). */
     public String criarCliente(String nome, String cpfCnpj, String email) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();

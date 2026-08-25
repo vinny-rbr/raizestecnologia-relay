@@ -46,6 +46,20 @@ public class CobrancaController {
         }
     }
 
+    /** GET /api/admin/asaas/status — confirma qual conta/ambiente Asaas está ativo (só leitura). */
+    @GetMapping("/api/admin/asaas/status")
+    public ResponseEntity<Map<String, Object>> asaasStatus() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("configurado", cobranca.asaasEnabled());
+        out.put("baseUrl", cobranca.asaasBaseUrl());
+        try {
+            out.put("conta", cobranca.asaasEnabled() ? cobranca.asaasContaNome() : null);
+        } catch (Exception e) {
+            out.put("conta", "erro: " + e.getMessage());
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
     /** POST /api/admin/lojas/{cnpj}/implantacao/paga — marca implantação paga (Pix/dinheiro) e libera. */
     @PostMapping("/api/admin/lojas/{cnpj}/implantacao/paga")
     public ResponseEntity<Map<String, Object>> implantacaoPaga(@PathVariable String cnpj) {
