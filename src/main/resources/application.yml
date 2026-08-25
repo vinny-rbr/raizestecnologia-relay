@@ -42,6 +42,11 @@ spring:
           starttls:
             enable: true
 
+# Asaas (cobranca dos lojistas). Defina ASAAS_API_KEY no Render. Sandbox por padrao.
+asaas:
+  base-url: ${ASAAS_BASE_URL:https://sandbox.asaas.com/api/v3}
+  api-key: ${ASAAS_API_KEY:}
+
 # Autenticacao / bootstrap do DONO (usados pelos arquivos do R1)
 relay:
   jwt:

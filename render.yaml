@@ -22,3 +22,8 @@ services:
         sync: false      # default: admin@raizes.com
       - key: ADMIN_SENHA
         sync: false      # default: raizes123
+      # Asaas (cobranca dos lojistas).
+      - key: ASAAS_API_KEY
+        sync: false      # cole a chave ($aact_...) no painel do Render
+      - key: ASAAS_BASE_URL
+        sync: false      # sandbox: https://sandbox.asaas.com/api/v3 | prod: https://api.asaas.com/api/v3
