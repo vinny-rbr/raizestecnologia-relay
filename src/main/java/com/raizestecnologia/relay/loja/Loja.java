@@ -22,9 +22,13 @@ public class Loja {
     @Column(name = "atualizado_em")
     private Instant atualizadoEm = Instant.now();
 
-    /** Quando o cliente começou a usar (1ª ativação). Base do "há quantos dias usa" e da cobrança mensal. */
+    /** Quando o cliente começou a usar (1ª ativação). Base do "há quantos dias usa" e da cobrança proporcional. */
     @Column(name = "ativada_em")
     private Instant ativadaEm;
+
+    /** Valor da mensalidade deste cliente (R$). Definido pelo master. */
+    @Column(name = "mensalidade")
+    private Double mensalidade;
 
     /** true = loja suspensa (pagamento pendente): os usuarios dela nao acessam o app. */
     @Column(name = "bloqueada", nullable = false, columnDefinition = "boolean not null default false")
@@ -48,6 +52,8 @@ public class Loja {
     public void setAtualizadoEm(Instant atualizadoEm) { this.atualizadoEm = atualizadoEm; }
     public Instant getAtivadaEm() { return ativadaEm; }
     public void setAtivadaEm(Instant ativadaEm) { this.ativadaEm = ativadaEm; }
+    public Double getMensalidade() { return mensalidade; }
+    public void setMensalidade(Double mensalidade) { this.mensalidade = mensalidade; }
     public boolean isBloqueada() { return bloqueada; }
     public void setBloqueada(boolean bloqueada) { this.bloqueada = bloqueada; }
     public String getMotivoBloqueio() { return motivoBloqueio; }

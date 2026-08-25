@@ -198,9 +198,12 @@ public class AdminController {
             m.put("bloqueada", lojas.estaBloqueada(en.getKey()));
             m.put("motivo", lojas.motivo(en.getKey()));
             java.time.Instant ativ = lojas.ativadaEm(en.getKey());
+            Double mens = lojas.mensalidade(en.getKey());
             m.put("ativadaEm", ativ == null ? null : ativ.toString());
             m.put("diasUso", diasUso(ativ));
-            m.put("proximaCobranca", proximaCobranca(ativ));
+            m.put("mensalidade", mens);
+            m.put("implantacao", IMPLANTACAO);
+            m.putAll(cobranca(ativ, mens));
             lista.add(m);
         }
         return ResponseEntity.ok(ApiEnvelope.ok(lista));
@@ -247,11 +250,39 @@ public class AdminController {
                     .atTime(12, 0).atZone(BRT).toInstant();
             lojas.definirAtivacao(c, quando);
             registrarAcao(c, "loja_ativacao", "Cliente desde " + data.trim());
-            return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "ativadaEm", quando.toString(),
-                    "diasUso", diasUso(quando), "proximaCobranca", proximaCobranca(quando))));
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("cnpj", c);
+            out.put("ativadaEm", quando.toString());
+            out.put("diasUso", diasUso(quando));
+            out.putAll(cobranca(quando, lojas.mensalidade(c)));
+            return ResponseEntity.ok(ApiEnvelope.ok(out));
         } catch (Exception e) {
             return ResponseEntity.status(400).body(ApiEnvelope.fail("data invalida (use YYYY-MM-DD)"));
         }
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/mensalidade  body: {"valor": 89.90} — define o valor mensal do cliente. */
+    @PostMapping("/lojas/{cnpj}/mensalidade")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirMensalidade(@PathVariable String cnpj,
+                                                                  @RequestBody Map<String, Object> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        Object v = body == null ? null : body.get("valor");
+        Double valor;
+        try {
+            valor = v == null ? null : Double.valueOf(v.toString().replace(",", "."));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("valor invalido"));
+        }
+        lojas.definirMensalidade(c, valor);
+        registrarAcao(c, "loja_mensalidade", "Mensalidade R$ " + valor);
+        java.time.Instant ativ = lojas.ativadaEm(c);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("cnpj", c);
+        out.put("mensalidade", valor);
+        out.putAll(cobranca(ativ, valor));
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
     private static final java.time.ZoneId BRT = java.time.ZoneId.of("America/Sao_Paulo");
@@ -264,23 +295,54 @@ public class AdminController {
         return (int) Math.max(0, d);
     }
 
-    /** Próxima cobrança: mesmo dia do mês da ativação, na próxima ocorrência (YYYY-MM-DD). null se sem ativação. */
-    private static String proximaCobranca(java.time.Instant ativadaEm) {
-        if (ativadaEm == null) return null;
-        java.time.LocalDate ini = ativadaEm.atZone(BRT).toLocalDate();
-        java.time.LocalDate hoje = java.time.LocalDate.now(BRT);
-        int dia = ini.getDayOfMonth();
-        // começa no mês atual, ajustando o dia (meses curtos: usa o último dia)
-        java.time.LocalDate cand = ajustaDia(hoje.withDayOfMonth(1), dia);
-        while (!cand.isAfter(hoje)) {
-            cand = ajustaDia(cand.plusMonths(1).withDayOfMonth(1), dia);
+    /** Regra de cobrança: mensalidade vence todo dia 5; implantação (uma vez) na 1a cobrança;
+     *  a 1a cobrança é proporcional (do dia da instalação até o dia 5). */
+    static final double IMPLANTACAO = 50.0;
+    private static final int DIA_COBRANCA = 5;
+
+    /** Monta os campos de cobrança (proximaCobranca, primeiraCobranca, valorProximaCobranca). */
+    private static Map<String, Object> cobranca(java.time.Instant ativadaEm, Double mensalidade) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        if (ativadaEm == null) {
+            r.put("proximaCobranca", null);
+            r.put("primeiraCobranca", false);
+            r.put("valorProximaCobranca", null);
+            return r;
         }
-        return cand.toString();
+        java.time.LocalDate ativ = ativadaEm.atZone(BRT).toLocalDate();
+        java.time.LocalDate hoje = java.time.LocalDate.now(BRT);
+        // 1a cobrança = primeiro dia 5 DEPOIS da instalação (instalou antes do dia 5 -> dia 5 do mesmo mês).
+        java.time.LocalDate primeira = ativ.withDayOfMonth(DIA_COBRANCA);
+        if (!ativ.isBefore(primeira)) primeira = primeira.plusMonths(1);
+        boolean ehPrimeira = !hoje.isAfter(primeira); // a 1a cobrança ainda não passou
+        java.time.LocalDate proxima = ehPrimeira ? primeira : proximoDia5(hoje);
+        r.put("proximaCobranca", proxima.toString());
+        r.put("primeiraCobranca", ehPrimeira);
+        if (mensalidade == null) {
+            r.put("valorProximaCobranca", null);
+            return r;
+        }
+        double valor;
+        if (ehPrimeira) {
+            long dias = java.time.temporal.ChronoUnit.DAYS.between(ativ, primeira);
+            double proporcional = round2(mensalidade * dias / 30.0); // proporcional ao uso ate o dia 5
+            valor = round2(IMPLANTACAO + proporcional);
+        } else {
+            valor = round2(mensalidade);
+        }
+        r.put("valorProximaCobranca", valor);
+        return r;
     }
 
-    private static java.time.LocalDate ajustaDia(java.time.LocalDate primeiroDoMes, int dia) {
-        int max = primeiroDoMes.lengthOfMonth();
-        return primeiroDoMes.withDayOfMonth(Math.min(dia, max));
+    /** Próximo dia 5 >= [from]. */
+    private static java.time.LocalDate proximoDia5(java.time.LocalDate from) {
+        java.time.LocalDate c = from.withDayOfMonth(DIA_COBRANCA);
+        if (c.isBefore(from)) c = from.plusMonths(1).withDayOfMonth(DIA_COBRANCA);
+        return c;
+    }
+
+    private static double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
     }
 
     /** DELETE /api/admin/lojas/{cnpj} — remove a loja do registro (loja desativada/errada). */

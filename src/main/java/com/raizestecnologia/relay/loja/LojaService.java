@@ -68,13 +68,30 @@ public class LojaService {
         return repo.findById(c).map(Loja::getAtivadaEm).orElse(null);
     }
 
-    /** Master define/corrige a data de ativação (dia da instalação = base da cobrança mensal). */
+    /** Master define/corrige a data de ativação (dia da instalação = base da cobrança proporcional). */
     @Transactional
     public void definirAtivacao(String cnpj, java.time.Instant quando) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
         if (c.isBlank() || quando == null) return;
         Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
         l.setAtivadaEm(quando);
+        repo.save(l);
+    }
+
+    /** Valor da mensalidade da loja (null se não definido). */
+    public Double mensalidade(String cnpj) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return null;
+        return repo.findById(c).map(Loja::getMensalidade).orElse(null);
+    }
+
+    /** Master define a mensalidade (R$) da loja. */
+    @Transactional
+    public void definirMensalidade(String cnpj, Double valor) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setMensalidade(valor);
         repo.save(l);
     }
 
