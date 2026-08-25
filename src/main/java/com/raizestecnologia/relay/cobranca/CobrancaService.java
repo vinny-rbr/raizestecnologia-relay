@@ -26,6 +26,8 @@ public class CobrancaService {
     public static final double IMPLANTACAO = 50.0;
     public static final double MENSALIDADE_PADRAO = 30.0;
     private static final int DIA_COBRANCA = 5;
+    /** Dia do mês em que o inadimplente é suspenso (vence dia 5; tolera até este dia). */
+    private static final int DIA_CORTE = 10;
 
     private final AsaasClient asaas;
     private final LojaRepository lojas;
@@ -136,6 +138,42 @@ public class CobrancaService {
         lojas.save(l);
         log.info("[cobranca] pagamento Asaas confirmado - loja {} liberada", l.getCnpj());
         return true;
+    }
+
+    /** Agendado: verifica inadimplência 2 min após subir e depois a cada 6h. */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 120_000, fixedRate = 21_600_000)
+    void agendarBloqueioInadimplentes() {
+        try {
+            bloquearInadimplentes();
+        } catch (Exception e) {
+            log.warn("[cobranca] falha no auto-bloqueio agendado: {}", e.getMessage());
+        }
+    }
+
+    /** Suspende automaticamente os clientes que não pagaram a mensalidade do mês até o DIA_CORTE. */
+    @Transactional
+    public int bloquearInadimplentes() {
+        LocalDate hoje = LocalDate.now(BRT);
+        if (hoje.getDayOfMonth() < DIA_CORTE) return 0; // ainda dentro do prazo
+        LocalDate day5 = hoje.withDayOfMonth(DIA_COBRANCA);
+        int n = 0;
+        for (Loja l : lojas.findAll()) {
+            if (l.isBloqueada() || l.getAtivadaEm() == null) continue;
+            LocalDate ativ = l.getAtivadaEm().atZone(BRT).toLocalDate();
+            LocalDate primeira = firstDay5(ativ);
+            if (day5.isBefore(primeira)) continue; // cliente novo: sem cobrança vencida neste mês
+            boolean mensalidadePaga = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(day5);
+            boolean quite = l.isImplantacaoPaga() && mensalidadePaga;
+            if (!quite) {
+                l.setBloqueada(true);
+                l.setMotivoBloqueio("Pagamento em atraso — não recebido até o dia " + DIA_CORTE + ". Regularize para reativar.");
+                lojas.save(l);
+                n++;
+                log.info("[cobranca] auto-bloqueio por inadimplência - loja {}", l.getCnpj());
+            }
+        }
+        if (n > 0) log.info("[cobranca] {} loja(s) suspensa(s) por inadimplência", n);
+        return n;
     }
 
     private boolean apply(String cnpj, java.util.function.Consumer<Loja> fn, String motivo) {
