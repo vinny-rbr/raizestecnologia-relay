@@ -36,6 +36,7 @@ public class LojaService {
             Loja l = repo.findById(cnpj).orElseGet(() -> new Loja(cnpj, ev.nome()));
             if (ev.nome() != null && !ev.nome().isBlank()) l.setNome(ev.nome());
             l.setAtualizadoEm(Instant.now());
+            if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now()); // 1a ativacao (base da cobranca)
             repo.save(l);
         } catch (Exception e) {
             log.warn("[loja] falha ao registrar loja {}: {}", cnpj, e.getMessage());
@@ -58,6 +59,23 @@ public class LojaService {
         try {
             if (!repo.existsById(cnpj)) repo.save(new Loja(cnpj, nome));
         } catch (Exception ignore) {}
+    }
+
+    /** Data de ativação (cliente desde) por cnpj — null se não registrada. */
+    public java.time.Instant ativadaEm(String cnpj) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return null;
+        return repo.findById(c).map(Loja::getAtivadaEm).orElse(null);
+    }
+
+    /** Master define/corrige a data de ativação (dia da instalação = base da cobrança mensal). */
+    @Transactional
+    public void definirAtivacao(String cnpj, java.time.Instant quando) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank() || quando == null) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setAtivadaEm(quando);
+        repo.save(l);
     }
 
     /** Todas as lojas conhecidas: cnpj -> nome. */

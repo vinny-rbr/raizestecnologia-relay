@@ -197,6 +197,10 @@ public class AdminController {
             m.put("online", hub.online(en.getKey()));
             m.put("bloqueada", lojas.estaBloqueada(en.getKey()));
             m.put("motivo", lojas.motivo(en.getKey()));
+            java.time.Instant ativ = lojas.ativadaEm(en.getKey());
+            m.put("ativadaEm", ativ == null ? null : ativ.toString());
+            m.put("diasUso", diasUso(ativ));
+            m.put("proximaCobranca", proximaCobranca(ativ));
             lista.add(m);
         }
         return ResponseEntity.ok(ApiEnvelope.ok(lista));
@@ -226,6 +230,57 @@ public class AdminController {
         lojas.desbloquear(c);
         registrarAcao(c, "loja_desbloqueada", "Acesso reativado");
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "bloqueada", false)));
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/ativacao  body: {"data":"YYYY-MM-DD"} — define o dia que o cliente começou (base da cobrança). */
+    @PostMapping("/lojas/{cnpj}/ativacao")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirAtivacao(@PathVariable String cnpj,
+                                                               @RequestBody Map<String, String> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String data = body == null ? null : body.get("data");
+        if (data == null || data.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("data obrigatoria (YYYY-MM-DD)"));
+        try {
+            // interpreta a data no fuso BRT, ao meio-dia (evita virar o dia por causa do UTC)
+            java.time.Instant quando = java.time.LocalDate.parse(data.trim())
+                    .atTime(12, 0).atZone(BRT).toInstant();
+            lojas.definirAtivacao(c, quando);
+            registrarAcao(c, "loja_ativacao", "Cliente desde " + data.trim());
+            return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "ativadaEm", quando.toString(),
+                    "diasUso", diasUso(quando), "proximaCobranca", proximaCobranca(quando))));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("data invalida (use YYYY-MM-DD)"));
+        }
+    }
+
+    private static final java.time.ZoneId BRT = java.time.ZoneId.of("America/Sao_Paulo");
+
+    /** Dias que o cliente já usa (desde a ativação). null → 0. */
+    private static int diasUso(java.time.Instant ativadaEm) {
+        if (ativadaEm == null) return 0;
+        java.time.LocalDate ini = ativadaEm.atZone(BRT).toLocalDate();
+        long d = java.time.temporal.ChronoUnit.DAYS.between(ini, java.time.LocalDate.now(BRT));
+        return (int) Math.max(0, d);
+    }
+
+    /** Próxima cobrança: mesmo dia do mês da ativação, na próxima ocorrência (YYYY-MM-DD). null se sem ativação. */
+    private static String proximaCobranca(java.time.Instant ativadaEm) {
+        if (ativadaEm == null) return null;
+        java.time.LocalDate ini = ativadaEm.atZone(BRT).toLocalDate();
+        java.time.LocalDate hoje = java.time.LocalDate.now(BRT);
+        int dia = ini.getDayOfMonth();
+        // começa no mês atual, ajustando o dia (meses curtos: usa o último dia)
+        java.time.LocalDate cand = ajustaDia(hoje.withDayOfMonth(1), dia);
+        while (!cand.isAfter(hoje)) {
+            cand = ajustaDia(cand.plusMonths(1).withDayOfMonth(1), dia);
+        }
+        return cand.toString();
+    }
+
+    private static java.time.LocalDate ajustaDia(java.time.LocalDate primeiroDoMes, int dia) {
+        int max = primeiroDoMes.lengthOfMonth();
+        return primeiroDoMes.withDayOfMonth(Math.min(dia, max));
     }
 
     /** DELETE /api/admin/lojas/{cnpj} — remove a loja do registro (loja desativada/errada). */
