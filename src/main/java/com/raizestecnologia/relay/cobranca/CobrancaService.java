@@ -11,11 +11,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 /**
- * Regras de cobrança do lojista via Asaas: gera a fatura atual (implantação +
- * proporcional na 1ª; mensalidade nas demais) e cria a assinatura mensal (dia 5).
- * O pagamento é confirmado pelo webhook, que desbloqueia a loja.
+ * Regras de cobrança do lojista.
+ * Fases: 1) IMPLANTAÇÃO R$50 (avulsa) → 2) 1ª mensalidade PROPORCIONAL ao uso (vence dia 5)
+ * → 3) mensalidade cheia todo dia 5. Pagamento por Asaas (webhook) OU marcado manual (Pix/dinheiro).
  */
 @Service
 public class CobrancaService {
@@ -34,76 +35,133 @@ public class CobrancaService {
         this.lojas = lojas;
     }
 
-    public record Resultado(String linkPagamento, double valor, String vencimento, boolean primeira, boolean assinaturaCriada) {}
+    /** Estado de cobrança atual da loja (o que está pendente agora). */
+    public record Estado(String fase, boolean implantacaoPaga, String item, double valor,
+                         String vencimento, boolean primeiraMensalidade) {}
 
-    /** Gera a cobrança da fatura atual + a assinatura mensal (se ainda não houver). */
+    public Estado estado(Loja l) {
+        double mens = l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO;
+        LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
+        LocalDate hoje = LocalDate.now(BRT);
+
+        if (!l.isImplantacaoPaga()) {
+            // implantação é "à vista" (na instalação); dá uma folga de 3 dias no vencimento.
+            return new Estado("implantacao", false, "Implantação", IMPLANTACAO, hoje.plusDays(3).toString(), false);
+        }
+        LocalDate primeira = firstDay5(ativ);
+        if (l.getMensalidadePagaAte() == null) {
+            long dias = ChronoUnit.DAYS.between(ativ, primeira);
+            double valor = round2(mens * dias / 30.0);
+            return new Estado("mensalidade", true, "1ª mensalidade (proporcional)", valor, primeira.toString(), true);
+        }
+        LocalDate prox = proximoDia5(l.getMensalidadePagaAte().plusDays(1));
+        return new Estado("mensalidade", true, "Mensalidade", round2(mens), prox.toString(), false);
+    }
+
+    public record Resultado(String linkPagamento, double valor, String vencimento, String item, boolean assinaturaCriada) {}
+
+    /** Gera a cobrança do item pendente (implantação ou mensalidade) no Asaas + assinatura mensal. */
     @Transactional
     public Resultado gerar(String cnpj, String email) throws Exception {
         if (!asaas.enabled()) throw new IllegalStateException("Asaas não configurado (defina ASAAS_API_KEY no servidor).");
-        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
-        Loja l = lojas.findById(c).orElseThrow(() -> new IllegalArgumentException("Loja não encontrada"));
-
-        // garante data de início (base do proporcional)
+        Loja l = carregar(cnpj);
         if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
-        LocalDate ativ = l.getAtivadaEm().atZone(BRT).toLocalDate();
-        LocalDate hoje = LocalDate.now(BRT);
-        double mens = l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO;
+        Estado est = estado(l);
 
-        // 1a cobrança = primeiro dia 5 depois da instalação
-        LocalDate primeiraData = ativ.withDayOfMonth(DIA_COBRANCA);
-        if (!ativ.isBefore(primeiraData)) primeiraData = primeiraData.plusMonths(1);
-        boolean ehPrimeira = !hoje.isAfter(primeiraData);
-
-        LocalDate vencimento;
-        double valor;
-        String descricao;
-        if (ehPrimeira) {
-            vencimento = primeiraData;
-            long dias = ChronoUnit.DAYS.between(ativ, primeiraData);
-            double proporcional = round2(mens * dias / 30.0);
-            valor = round2(IMPLANTACAO + proporcional);
-            descricao = "Meu Giro - Implantação (R$ " + IMPLANTACAO + ") + " + dias + " dias proporcionais";
-        } else {
-            vencimento = proximoDia5(hoje);
-            valor = round2(mens);
-            descricao = "Meu Giro - Mensalidade";
-        }
-
-        // garante cliente no Asaas
         String cust = l.getAsaasCustomerId();
         if (cust == null || cust.isBlank()) {
-            cust = asaas.criarCliente(l.getNome(), c, email);
+            cust = asaas.criarCliente(l.getNome(), l.getCnpj(), email);
             l.setAsaasCustomerId(cust);
         }
+        String descricao = "Meu Giro - " + est.item();
+        AsaasClient.Cobranca cob = asaas.criarCobranca(cust, est.valor(), LocalDate.parse(est.vencimento()), descricao);
 
-        // fatura atual
-        AsaasClient.Cobranca cob = asaas.criarCobranca(cust, valor, vencimento, descricao);
-
-        // assinatura mensal (recorrência a partir do mês seguinte à fatura gerada)
+        // assinatura mensal (recorrência): cria uma vez, começando no dia 5 seguinte à mensalidade atual.
         boolean assinaturaCriada = false;
-        if (l.getAsaasSubscriptionId() == null || l.getAsaasSubscriptionId().isBlank()) {
-            LocalDate proxAssinatura = vencimento.plusMonths(1);
+        if ((l.getAsaasSubscriptionId() == null || l.getAsaasSubscriptionId().isBlank())
+                && "mensalidade".equals(est.fase())) {
+            double mens = l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO;
+            LocalDate proxAssinatura = proximoDia5(LocalDate.parse(est.vencimento()).plusDays(1));
             String sub = asaas.criarAssinatura(cust, mens, proxAssinatura, "Meu Giro - Mensalidade");
             l.setAsaasSubscriptionId(sub);
             assinaturaCriada = true;
         }
         lojas.save(l);
-        log.info("[cobranca] loja {} cobranca {} R$ {} venc {} (assinatura={})", c, cob.id(), valor, vencimento, l.getAsaasSubscriptionId());
-        return new Resultado(cob.linkPagamento(), valor, vencimento.toString(), ehPrimeira, assinaturaCriada);
+        log.info("[cobranca] loja {} {} R$ {} venc {}", l.getCnpj(), est.item(), est.valor(), est.vencimento());
+        return new Resultado(cob.linkPagamento(), est.valor(), est.vencimento(), est.item(), assinaturaCriada);
     }
 
-    /** Webhook confirmou pagamento: registra e desbloqueia a loja daquele cliente. */
+    // ---- Baixa de pagamento (manual ou via webhook do Asaas) ----
+
+    /** Marca a IMPLANTAÇÃO como paga (Pix/dinheiro ou Asaas) e libera a loja. */
     @Transactional
-    public boolean confirmarPagamento(String customerId) {
+    public boolean marcarImplantacaoPaga(String cnpj, boolean manual) {
+        return apply(cnpj, l -> {
+            l.setImplantacaoPaga(true);
+            l.setImplantacaoPagaEm(Instant.now());
+            liberar(l);
+        }, manual ? "implantacao_paga_manual" : "implantacao_paga_asaas");
+    }
+
+    /** Marca a MENSALIDADE atual como paga: avança o "pago até" para o próximo dia 5. */
+    @Transactional
+    public boolean marcarMensalidadePaga(String cnpj, boolean manual) {
+        return apply(cnpj, l -> {
+            LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
+            LocalDate novaAte = l.getMensalidadePagaAte() == null
+                    ? firstDay5(ativ)
+                    : proximoDia5(l.getMensalidadePagaAte().plusDays(1));
+            l.setMensalidadePagaAte(novaAte);
+            liberar(l);
+        }, manual ? "mensalidade_paga_manual" : "mensalidade_paga_asaas");
+    }
+
+    /** Webhook do Asaas confirmou pagamento: dá baixa no item pendente (implantação → mensalidade). */
+    @Transactional
+    public boolean confirmarPagamentoAsaas(String customerId) {
         if (customerId == null || customerId.isBlank()) return false;
-        return lojas.findByAsaasCustomerId(customerId).map(l -> {
-            l.setUltimoPagamento(Instant.now());
-            l.setBloqueada(false);
-            l.setMotivoBloqueio(null);
-            lojas.save(l);
-            log.info("[cobranca] pagamento confirmado - loja {} desbloqueada", l.getCnpj());
-            return true;
-        }).orElse(false);
+        Optional<Loja> lo = lojas.findByAsaasCustomerId(customerId);
+        if (lo.isEmpty()) return false;
+        Loja l = lo.get();
+        if (!l.isImplantacaoPaga()) {
+            l.setImplantacaoPaga(true);
+            l.setImplantacaoPagaEm(Instant.now());
+        } else {
+            LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
+            l.setMensalidadePagaAte(l.getMensalidadePagaAte() == null
+                    ? firstDay5(ativ)
+                    : proximoDia5(l.getMensalidadePagaAte().plusDays(1)));
+        }
+        liberar(l);
+        lojas.save(l);
+        log.info("[cobranca] pagamento Asaas confirmado - loja {} liberada", l.getCnpj());
+        return true;
+    }
+
+    private boolean apply(String cnpj, java.util.function.Consumer<Loja> fn, String motivo) {
+        Loja l = carregar(cnpj);
+        fn.accept(l);
+        lojas.save(l);
+        log.info("[cobranca] {} - loja {}", motivo, l.getCnpj());
+        return true;
+    }
+
+    private void liberar(Loja l) {
+        l.setUltimoPagamento(Instant.now());
+        l.setBloqueada(false);
+        l.setMotivoBloqueio(null);
+    }
+
+    private Loja carregar(String cnpj) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        return lojas.findById(c).orElseThrow(() -> new IllegalArgumentException("Loja não encontrada"));
+    }
+
+    /** 1º dia 5 depois da instalação (instalou antes do dia 5 → dia 5 do mesmo mês). */
+    private static LocalDate firstDay5(LocalDate ativacao) {
+        LocalDate d = ativacao.withDayOfMonth(DIA_COBRANCA);
+        if (!ativacao.isBefore(d)) d = d.plusMonths(1);
+        return d;
     }
 
     private static LocalDate proximoDia5(LocalDate from) {

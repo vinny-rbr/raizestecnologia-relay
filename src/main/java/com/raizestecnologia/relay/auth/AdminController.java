@@ -30,17 +30,20 @@ public class AdminController {
     private final AgentHub hub;
     private final com.raizestecnologia.relay.audit.AuditoriaRepository auditoria;
     private final com.raizestecnologia.relay.loja.LojaService lojas;
+    private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
 
     public AdminController(AppUserRepository users, UserEmpresaRepository vinculos,
                            PasswordEncoder encoder, AgentHub hub,
                            com.raizestecnologia.relay.audit.AuditoriaRepository auditoria,
-                           com.raizestecnologia.relay.loja.LojaService lojas) {
+                           com.raizestecnologia.relay.loja.LojaService lojas,
+                           com.raizestecnologia.relay.cobranca.CobrancaService cobrancas) {
         this.users = users;
         this.vinculos = vinculos;
         this.encoder = encoder;
         this.hub = hub;
         this.auditoria = auditoria;
         this.lojas = lojas;
+        this.cobrancas = cobrancas;
     }
 
     // ---- Auditoria (DONO) ------------------------------------------------
@@ -204,7 +207,31 @@ public class AdminController {
             m.put("diasUso", diasUso(ativ));
             m.put("mensalidade", mens);
             m.put("implantacao", IMPLANTACAO);
-            m.putAll(cobranca(ativ, mens));
+            // Estado de cobrança (implantação -> 1ª proporcional -> mensalidade).
+            var lojaOpt = lojas.obter(en.getKey());
+            if (lojaOpt.isPresent()) {
+                var est = cobrancas.estado(lojaOpt.get());
+                m.put("implantacaoPaga", lojaOpt.get().isImplantacaoPaga());
+                m.put("fase", est.fase());
+                m.put("itemCobranca", est.item());
+                m.put("valorAtual", est.valor());
+                m.put("vencimentoAtual", est.vencimento());
+                m.put("primeiraMensalidade", est.primeiraMensalidade());
+                // compatibilidade com a UI atual
+                m.put("proximaCobranca", est.vencimento());
+                m.put("valorProximaCobranca", est.valor());
+                m.put("primeiraCobranca", est.primeiraMensalidade());
+            } else {
+                m.put("implantacaoPaga", false);
+                m.put("fase", "implantacao");
+                m.put("itemCobranca", "Implantação");
+                m.put("valorAtual", IMPLANTACAO);
+                m.put("vencimentoAtual", null);
+                m.put("primeiraMensalidade", false);
+                m.put("proximaCobranca", null);
+                m.put("valorProximaCobranca", null);
+                m.put("primeiraCobranca", false);
+            }
             lista.add(m);
         }
         return ResponseEntity.ok(ApiEnvelope.ok(lista));

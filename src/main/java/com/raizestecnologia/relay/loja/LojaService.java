@@ -95,6 +95,12 @@ public class LojaService {
         repo.save(l);
     }
 
+    /** A loja (entidade) por cnpj, se existir. */
+    public java.util.Optional<Loja> obter(String cnpj) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        return c.isBlank() ? java.util.Optional.empty() : repo.findById(c);
+    }
+
     /** Todas as lojas conhecidas: cnpj -> nome. */
     public Map<String, String> conhecidas() {
         Map<String, String> m = new LinkedHashMap<>();

@@ -41,6 +41,17 @@ public class Loja {
     @Column(name = "ultimo_pagamento")
     private Instant ultimoPagamento;
 
+    /** Implantação (R$50) quitada (Asaas ou manual). Enquanto false, é o que está pendente. */
+    @Column(name = "implantacao_paga", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean implantacaoPaga = false;
+
+    @Column(name = "implantacao_paga_em")
+    private Instant implantacaoPagaEm;
+
+    /** Mensalidade paga ATÉ este dia 5 (inclusive). null = nenhuma mensalidade paga ainda. */
+    @Column(name = "mensalidade_paga_ate")
+    private java.time.LocalDate mensalidadePagaAte;
+
     /** true = loja suspensa (pagamento pendente): os usuarios dela nao acessam o app. */
     @Column(name = "bloqueada", nullable = false, columnDefinition = "boolean not null default false")
     private boolean bloqueada = false;
@@ -71,6 +82,12 @@ public class Loja {
     public void setAsaasSubscriptionId(String v) { this.asaasSubscriptionId = v; }
     public Instant getUltimoPagamento() { return ultimoPagamento; }
     public void setUltimoPagamento(Instant v) { this.ultimoPagamento = v; }
+    public boolean isImplantacaoPaga() { return implantacaoPaga; }
+    public void setImplantacaoPaga(boolean v) { this.implantacaoPaga = v; }
+    public Instant getImplantacaoPagaEm() { return implantacaoPagaEm; }
+    public void setImplantacaoPagaEm(Instant v) { this.implantacaoPagaEm = v; }
+    public java.time.LocalDate getMensalidadePagaAte() { return mensalidadePagaAte; }
+    public void setMensalidadePagaAte(java.time.LocalDate v) { this.mensalidadePagaAte = v; }
     public boolean isBloqueada() { return bloqueada; }
     public void setBloqueada(boolean bloqueada) { this.bloqueada = bloqueada; }
     public String getMotivoBloqueio() { return motivoBloqueio; }

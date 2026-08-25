@@ -24,7 +24,7 @@ public class CobrancaController {
         this.cobranca = cobranca;
     }
 
-    /** POST /api/admin/lojas/{cnpj}/cobranca  body opcional: {"email":"cliente@..."} — gera a fatura + assinatura. */
+    /** POST /api/admin/lojas/{cnpj}/cobranca  body opcional: {"email":"cliente@..."} — gera a fatura do item pendente + assinatura. */
     @PostMapping("/api/admin/lojas/{cnpj}/cobranca")
     public ResponseEntity<Map<String, Object>> gerar(@PathVariable String cnpj,
                                                      @RequestBody(required = false) Map<String, String> body) {
@@ -35,7 +35,7 @@ public class CobrancaController {
             out.put("linkPagamento", r.linkPagamento());
             out.put("valor", r.valor());
             out.put("vencimento", r.vencimento());
-            out.put("primeira", r.primeira());
+            out.put("item", r.item());
             out.put("assinaturaCriada", r.assinaturaCriada());
             return ResponseEntity.ok(ApiEnvelope.ok(out));
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -43,6 +43,28 @@ public class CobrancaController {
         } catch (Exception e) {
             log.warn("[cobranca] falha ao gerar cobranca da loja {}: {}", cnpj, e.getMessage());
             return ResponseEntity.status(502).body(ApiEnvelope.fail("Falha ao gerar cobrança: " + e.getMessage()));
+        }
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/implantacao/paga — marca implantação paga (Pix/dinheiro) e libera. */
+    @PostMapping("/api/admin/lojas/{cnpj}/implantacao/paga")
+    public ResponseEntity<Map<String, Object>> implantacaoPaga(@PathVariable String cnpj) {
+        try {
+            cobranca.marcarImplantacaoPaga(cnpj, true);
+            return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", cnpj, "implantacaoPaga", true)));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail(e.getMessage()));
+        }
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/mensalidade/paga — marca a mensalidade atual paga (Pix/dinheiro) e libera. */
+    @PostMapping("/api/admin/lojas/{cnpj}/mensalidade/paga")
+    public ResponseEntity<Map<String, Object>> mensalidadePaga(@PathVariable String cnpj) {
+        try {
+            cobranca.marcarMensalidadePaga(cnpj, true);
+            return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", cnpj, "mensalidadePaga", true)));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail(e.getMessage()));
         }
     }
 
@@ -61,7 +83,7 @@ public class CobrancaController {
             // Pagamento efetivado: confirma e desbloqueia a loja.
             if ("PAYMENT_CONFIRMED".equals(event) || "PAYMENT_RECEIVED".equals(event)
                     || "CONFIRMED".equals(status) || "RECEIVED".equals(status)) {
-                cobranca.confirmarPagamento(customer);
+                cobranca.confirmarPagamentoAsaas(customer);
             }
         } catch (Exception e) {
             log.warn("[asaas-webhook] erro ao processar: {}", e.getMessage());
