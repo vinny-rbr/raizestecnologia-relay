@@ -79,9 +79,21 @@ public class CobrancaService {
         if (cust == null || cust.isBlank()) {
             cust = asaas.criarCliente(l.getNome(), l.getCnpj(), email);
             l.setAsaasCustomerId(cust);
+            l.setAsaasSubscriptionId(null);
         }
         String descricao = "Meu Giro - " + est.item();
-        AsaasClient.Cobranca cob = asaas.criarCobranca(cust, est.valor(), LocalDate.parse(est.vencimento()), descricao);
+        LocalDate venc = LocalDate.parse(est.vencimento());
+        AsaasClient.Cobranca cob;
+        try {
+            cob = asaas.criarCobranca(cust, est.valor(), venc, descricao);
+        } catch (AsaasClient.AsaasException e) {
+            // Cliente pode estar inválido (ex.: id do sandbox depois de trocar p/ produção). Recria e tenta 1x.
+            log.warn("[cobranca] cliente {} inválido ({}); recriando na conta atual", cust, e.getMessage());
+            cust = asaas.criarCliente(l.getNome(), l.getCnpj(), email);
+            l.setAsaasCustomerId(cust);
+            l.setAsaasSubscriptionId(null); // assinatura antiga era do cliente antigo
+            cob = asaas.criarCobranca(cust, est.valor(), venc, descricao);
+        }
 
         // assinatura mensal (recorrência): cria uma vez, começando no dia 5 seguinte à mensalidade atual.
         boolean assinaturaCriada = false;
