@@ -207,6 +207,7 @@ public class AdminController {
             m.put("diasUso", diasUso(ativ));
             m.put("mensalidade", mens);
             m.put("implantacao", IMPLANTACAO);
+            m.put("diaVencimento", lojas.diaVencimento(en.getKey()));
             // Estado de cobrança (implantação -> 1ª proporcional -> mensalidade).
             var lojaOpt = lojas.obter(en.getKey());
             if (lojaOpt.isPresent()) {
@@ -312,6 +313,26 @@ public class AdminController {
         out.put("mensalidade", valor);
         out.putAll(cobranca(ativ, valor));
         return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/dia-vencimento  body: {"dia": 15} — muda o dia de vencimento (1..28). */
+    @PostMapping("/lojas/{cnpj}/dia-vencimento")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirDiaVencimento(@PathVariable String cnpj,
+                                                                    @RequestBody Map<String, Object> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        Object v = body == null ? null : body.get("dia");
+        int dia;
+        try {
+            dia = v == null ? 5 : Integer.parseInt(v.toString().trim());
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("dia invalido"));
+        }
+        if (dia < 1 || dia > 28) return ResponseEntity.status(400).body(ApiEnvelope.fail("dia deve ser entre 1 e 28"));
+        lojas.definirDiaVencimento(c, dia);
+        registrarAcao(c, "loja_dia_vencimento", "Vencimento dia " + dia);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "diaVencimento", dia)));
     }
 
     private static final java.time.ZoneId BRT = java.time.ZoneId.of("America/Sao_Paulo");

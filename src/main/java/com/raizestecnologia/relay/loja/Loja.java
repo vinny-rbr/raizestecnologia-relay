@@ -30,6 +30,10 @@ public class Loja {
     @Column(name = "mensalidade")
     private Double mensalidade;
 
+    /** Dia do mês em que vence a mensalidade (1..28). Default 5. Negociável por cliente. */
+    @Column(name = "dia_vencimento", nullable = false, columnDefinition = "integer not null default 5")
+    private int diaVencimento = 5;
+
     /** Id do cliente no Asaas (cus_...) e da assinatura mensal (sub_...). */
     @Column(name = "asaas_customer_id", length = 40)
     private String asaasCustomerId;
@@ -76,6 +80,8 @@ public class Loja {
     public void setAtivadaEm(Instant ativadaEm) { this.ativadaEm = ativadaEm; }
     public Double getMensalidade() { return mensalidade; }
     public void setMensalidade(Double mensalidade) { this.mensalidade = mensalidade; }
+    public int getDiaVencimento() { return diaVencimento < 1 || diaVencimento > 28 ? 5 : diaVencimento; }
+    public void setDiaVencimento(int dia) { this.diaVencimento = dia; }
     public String getAsaasCustomerId() { return asaasCustomerId; }
     public void setAsaasCustomerId(String v) { this.asaasCustomerId = v; }
     public String getAsaasSubscriptionId() { return asaasSubscriptionId; }

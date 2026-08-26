@@ -25,9 +25,8 @@ public class CobrancaService {
     private static final ZoneId BRT = ZoneId.of("America/Sao_Paulo");
     public static final double IMPLANTACAO = 50.0;
     public static final double MENSALIDADE_PADRAO = 30.0;
-    private static final int DIA_COBRANCA = 5;
-    /** Dia do mês em que o inadimplente é suspenso (vence dia 5; tolera até este dia). */
-    private static final int DIA_CORTE = 10;
+    /** Dias de tolerância após o vencimento antes de suspender por inadimplência. */
+    private static final int TOLERANCIA_DIAS = 5;
 
     private final AsaasClient asaas;
     private final LojaRepository lojas;
@@ -48,6 +47,7 @@ public class CobrancaService {
 
     public Estado estado(Loja l) {
         double mens = l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO;
+        int dia = l.getDiaVencimento();
         LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
         LocalDate hoje = LocalDate.now(BRT);
 
@@ -55,13 +55,13 @@ public class CobrancaService {
             // implantação é "à vista" (na instalação); dá uma folga de 3 dias no vencimento.
             return new Estado("implantacao", false, "Implantação", IMPLANTACAO, hoje.plusDays(3).toString(), false);
         }
-        LocalDate primeira = firstDay5(ativ);
+        LocalDate primeira = primeiroVenc(ativ, dia);
         if (l.getMensalidadePagaAte() == null) {
             long dias = ChronoUnit.DAYS.between(ativ, primeira);
             double valor = round2(mens * dias / 30.0);
             return new Estado("mensalidade", true, "1ª mensalidade (proporcional)", valor, primeira.toString(), true);
         }
-        LocalDate prox = proximoDia5(l.getMensalidadePagaAte().plusDays(1));
+        LocalDate prox = proximoVenc(l.getMensalidadePagaAte().plusDays(1), dia);
         return new Estado("mensalidade", true, "Mensalidade", round2(mens), prox.toString(), false);
     }
 
@@ -100,7 +100,7 @@ public class CobrancaService {
         if ((l.getAsaasSubscriptionId() == null || l.getAsaasSubscriptionId().isBlank())
                 && "mensalidade".equals(est.fase())) {
             double mens = l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO;
-            LocalDate proxAssinatura = proximoDia5(LocalDate.parse(est.vencimento()).plusDays(1));
+            LocalDate proxAssinatura = proximoVenc(LocalDate.parse(est.vencimento()).plusDays(1), l.getDiaVencimento());
             String sub = asaas.criarAssinatura(cust, mens, proxAssinatura, "Meu Giro - Mensalidade");
             l.setAsaasSubscriptionId(sub);
             assinaturaCriada = true;
@@ -126,10 +126,11 @@ public class CobrancaService {
     @Transactional
     public boolean marcarMensalidadePaga(String cnpj, boolean manual) {
         return apply(cnpj, l -> {
+            int dia = l.getDiaVencimento();
             LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
             LocalDate novaAte = l.getMensalidadePagaAte() == null
-                    ? firstDay5(ativ)
-                    : proximoDia5(l.getMensalidadePagaAte().plusDays(1));
+                    ? primeiroVenc(ativ, dia)
+                    : proximoVenc(l.getMensalidadePagaAte().plusDays(1), dia);
             l.setMensalidadePagaAte(novaAte);
             liberar(l);
         }, manual ? "mensalidade_paga_manual" : "mensalidade_paga_asaas");
@@ -146,10 +147,11 @@ public class CobrancaService {
             l.setImplantacaoPaga(true);
             l.setImplantacaoPagaEm(Instant.now());
         } else {
+            int dia = l.getDiaVencimento();
             LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
             l.setMensalidadePagaAte(l.getMensalidadePagaAte() == null
-                    ? firstDay5(ativ)
-                    : proximoDia5(l.getMensalidadePagaAte().plusDays(1)));
+                    ? primeiroVenc(ativ, dia)
+                    : proximoVenc(l.getMensalidadePagaAte().plusDays(1), dia));
         }
         liberar(l);
         lojas.save(l);
@@ -167,23 +169,26 @@ public class CobrancaService {
         }
     }
 
-    /** Suspende automaticamente os clientes que não pagaram a mensalidade do mês até o DIA_CORTE. */
+    /** Suspende automaticamente quem não pagou até TOLERANCIA_DIAS após o vencimento (dia por loja). */
     @Transactional
     public int bloquearInadimplentes() {
         LocalDate hoje = LocalDate.now(BRT);
-        if (hoje.getDayOfMonth() < DIA_CORTE) return 0; // ainda dentro do prazo
-        LocalDate day5 = hoje.withDayOfMonth(DIA_COBRANCA);
         int n = 0;
         for (Loja l : lojas.findAll()) {
             if (l.isBloqueada() || l.getAtivadaEm() == null) continue;
+            int dia = l.getDiaVencimento();
             LocalDate ativ = l.getAtivadaEm().atZone(BRT).toLocalDate();
-            LocalDate primeira = firstDay5(ativ);
-            if (day5.isBefore(primeira)) continue; // cliente novo: sem cobrança vencida neste mês
-            boolean mensalidadePaga = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(day5);
-            boolean quite = l.isImplantacaoPaga() && mensalidadePaga;
-            if (!quite) {
+            LocalDate primeira = primeiroVenc(ativ, dia);
+            // vencimento do ciclo atual = último dia de vencimento que já passou
+            LocalDate venc = hoje.withDayOfMonth(dia);
+            if (venc.isAfter(hoje)) venc = venc.minusMonths(1).withDayOfMonth(dia);
+            if (venc.isBefore(primeira)) continue; // cliente novo: ainda não teve cobrança vencida
+            LocalDate corte = venc.plusDays(TOLERANCIA_DIAS);
+            if (hoje.isBefore(corte)) continue; // ainda no prazo de tolerância
+            boolean mensalidadePaga = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(venc);
+            if (!l.isImplantacaoPaga() || !mensalidadePaga) {
                 l.setBloqueada(true);
-                l.setMotivoBloqueio("Pagamento em atraso — não recebido até o dia " + DIA_CORTE + ". Regularize para reativar.");
+                l.setMotivoBloqueio("Pagamento em atraso — venceu dia " + dia + " e não foi recebido. Regularize para reativar.");
                 lojas.save(l);
                 n++;
                 log.info("[cobranca] auto-bloqueio por inadimplência - loja {}", l.getCnpj());
@@ -212,16 +217,16 @@ public class CobrancaService {
         return lojas.findById(c).orElseThrow(() -> new IllegalArgumentException("Loja não encontrada"));
     }
 
-    /** 1º dia 5 depois da instalação (instalou antes do dia 5 → dia 5 do mesmo mês). */
-    private static LocalDate firstDay5(LocalDate ativacao) {
-        LocalDate d = ativacao.withDayOfMonth(DIA_COBRANCA);
-        if (!ativacao.isBefore(d)) d = d.plusMonths(1);
+    /** 1º vencimento depois da instalação (instalou antes do dia → mesmo mês; senão mês seguinte). */
+    private static LocalDate primeiroVenc(LocalDate ativacao, int dia) {
+        LocalDate d = ativacao.withDayOfMonth(dia);
+        if (!ativacao.isBefore(d)) d = d.plusMonths(1).withDayOfMonth(dia);
         return d;
     }
 
-    private static LocalDate proximoDia5(LocalDate from) {
-        LocalDate d = from.withDayOfMonth(DIA_COBRANCA);
-        if (d.isBefore(from)) d = from.plusMonths(1).withDayOfMonth(DIA_COBRANCA);
+    private static LocalDate proximoVenc(LocalDate from, int dia) {
+        LocalDate d = from.withDayOfMonth(dia);
+        if (d.isBefore(from)) d = from.plusMonths(1).withDayOfMonth(dia);
         return d;
     }
 

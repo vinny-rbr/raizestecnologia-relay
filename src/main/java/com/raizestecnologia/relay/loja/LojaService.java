@@ -95,6 +95,20 @@ public class LojaService {
         repo.save(l);
     }
 
+    /** Master define o dia de vencimento (1..28) da loja. */
+    @Transactional
+    public void definirDiaVencimento(String cnpj, int dia) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setDiaVencimento(Math.min(28, Math.max(1, dia)));
+        repo.save(l);
+    }
+
+    public int diaVencimento(String cnpj) {
+        return obter(cnpj).map(Loja::getDiaVencimento).orElse(5);
+    }
+
     /** A loja (entidade) por cnpj, se existir. */
     public java.util.Optional<Loja> obter(String cnpj) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");

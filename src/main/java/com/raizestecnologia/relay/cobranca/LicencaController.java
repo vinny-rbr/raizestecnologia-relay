@@ -64,13 +64,14 @@ public class LicencaController {
             cnpj = p.cnpjs().iterator().next();
         }
 
+        int diaVenc = cnpj == null ? 5 : lojas.diaVencimento(cnpj);
         LocalDate hoje = LocalDate.now(BRT);
-        LocalDate vencimento = proximoDia5(hoje);
+        LocalDate vencimento = proximoVenc(hoje, diaVenc);
         long dias = ChronoUnit.DAYS.between(hoje, vencimento);
         boolean bloqueada = cnpj != null && lojas.estaBloqueada(cnpj);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("diaCobranca", DIA_COBRANCA);
+        out.put("diaCobranca", diaVenc);
         out.put("vencimento", vencimento.toString());   // YYYY-MM-DD
         out.put("diasRestantes", (int) dias);
         out.put("ativa", !bloqueada);
@@ -79,9 +80,10 @@ public class LicencaController {
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
-    private static LocalDate proximoDia5(LocalDate from) {
-        LocalDate d = from.withDayOfMonth(DIA_COBRANCA);
-        if (d.isBefore(from)) d = from.plusMonths(1).withDayOfMonth(DIA_COBRANCA);
-        return d;
+    private static LocalDate proximoVenc(LocalDate from, int dia) {
+        int d = Math.min(28, Math.max(1, dia));
+        LocalDate dt = from.withDayOfMonth(d);
+        if (dt.isBefore(from)) dt = from.plusMonths(1).withDayOfMonth(d);
+        return dt;
     }
 }
