@@ -30,10 +30,12 @@ public class CobrancaService {
 
     private final AsaasClient asaas;
     private final LojaRepository lojas;
+    private final CobrancaLoteRepository lotes;
 
-    public CobrancaService(AsaasClient asaas, LojaRepository lojas) {
+    public CobrancaService(AsaasClient asaas, LojaRepository lojas, CobrancaLoteRepository lotes) {
         this.asaas = asaas;
         this.lojas = lojas;
+        this.lotes = lotes;
     }
 
     // Diagnóstico do Asaas (só leitura).
@@ -108,6 +110,102 @@ public class CobrancaService {
         lojas.save(l);
         log.info("[cobranca] loja {} {} R$ {} venc {}", l.getCnpj(), est.item(), est.valor(), est.vencimento());
         return new Resultado(cob.linkPagamento(), est.valor(), est.vencimento(), est.item(), assinaturaCriada);
+    }
+
+    // ---- Cobrança combinada (várias lojas do mesmo cliente) ----
+
+    /** Pendência atual de cada loja (pro cliente escolher o que pagar). */
+    public java.util.List<java.util.Map<String, Object>> pendencias(java.util.Collection<String> cnpjs) {
+        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
+        for (String raw : cnpjs) {
+            String c = raw == null ? "" : raw.replaceAll("\\D", "");
+            var lo = lojas.findById(c);
+            if (lo.isEmpty()) continue;
+            Loja l = lo.get();
+            Estado est = estado(l);
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("cnpj", c);
+            m.put("nome", l.getNome());
+            m.put("fase", est.fase());
+            m.put("item", est.item());
+            m.put("valor", est.valor());
+            m.put("bloqueada", l.isBloqueada());
+            out.add(m);
+        }
+        return out;
+    }
+
+    /** Gera UM pagamento no Asaas somando as pendências das lojas escolhidas pelo cliente. */
+    @Transactional
+    public Resultado gerarLote(java.util.List<String> cnpjs, String email) throws Exception {
+        if (!asaas.enabled()) throw new IllegalStateException("Asaas não configurado (defina ASAAS_API_KEY no servidor).");
+        if (cnpjs == null || cnpjs.isEmpty()) throw new IllegalArgumentException("Selecione ao menos uma loja");
+        java.util.List<Loja> sel = new java.util.ArrayList<>();
+        for (String raw : cnpjs) {
+            String c = raw == null ? "" : raw.replaceAll("\\D", "");
+            lojas.findById(c).ifPresent(sel::add);
+        }
+        if (sel.isEmpty()) throw new IllegalArgumentException("Loja não encontrada");
+        if (sel.size() == 1) return gerar(sel.get(0).getCnpj(), email); // uma só → fluxo normal
+
+        double total = 0;
+        StringBuilder itens = new StringBuilder();
+        StringBuilder desc = new StringBuilder("Meu Giro (" + sel.size() + " lojas): ");
+        for (Loja l : sel) {
+            if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
+            Estado est = estado(l);
+            total += est.valor();
+            String tipo = "implantacao".equals(est.fase()) ? "IMPLANTACAO" : "MENSALIDADE";
+            if (itens.length() > 0) itens.append(";");
+            itens.append(l.getCnpj()).append(":").append(tipo);
+        }
+        desc.append("implantação/mensalidade");
+        total = round2(total);
+
+        Loja pagador = sel.get(0);
+        String cust = pagador.getAsaasCustomerId();
+        if (cust == null || cust.isBlank()) {
+            cust = asaas.criarCliente(pagador.getNome(), pagador.getCnpj(), email);
+            pagador.setAsaasCustomerId(cust);
+        }
+        LocalDate venc = LocalDate.now(BRT).plusDays(3);
+        AsaasClient.Cobranca cob;
+        try {
+            cob = asaas.criarCobranca(cust, total, venc, desc.toString());
+        } catch (AsaasClient.AsaasException e) {
+            cust = asaas.criarCliente(pagador.getNome(), pagador.getCnpj(), email);
+            pagador.setAsaasCustomerId(cust);
+            pagador.setAsaasSubscriptionId(null);
+            cob = asaas.criarCobranca(cust, total, venc, desc.toString());
+        }
+        lojas.saveAll(sel);
+        lotes.save(new CobrancaLote(cob.id(), itens.toString(), total));
+        log.info("[cobranca] lote {} - {} lojas - R$ {}", cob.id(), sel.size(), total);
+        return new Resultado(cob.linkPagamento(), total, venc.toString(), sel.size() + " lojas", false);
+    }
+
+    /** Webhook confirmou o pagamento de um lote: dá baixa em todas as lojas dele. */
+    @Transactional
+    public boolean confirmarLote(String paymentId) {
+        if (paymentId == null || paymentId.isBlank()) return false;
+        var lo = lotes.findByAsaasPaymentId(paymentId);
+        if (lo.isEmpty()) return false;
+        CobrancaLote lote = lo.get();
+        if (lote.isPago()) return true;
+        for (String par : lote.getItens().split(";")) {
+            String[] p = par.split(":");
+            if (p.length < 2) continue;
+            try {
+                if ("IMPLANTACAO".equals(p[1])) marcarImplantacaoPaga(p[0], false);
+                else marcarMensalidadePaga(p[0], false);
+            } catch (Exception e) {
+                log.warn("[cobranca] lote {}: falha na baixa da loja {}: {}", paymentId, p[0], e.getMessage());
+            }
+        }
+        lote.setPago(true);
+        lotes.save(lote);
+        log.info("[cobranca] lote {} pago - lojas liberadas", paymentId);
+        return true;
     }
 
     // ---- Baixa de pagamento (manual ou via webhook do Asaas) ----

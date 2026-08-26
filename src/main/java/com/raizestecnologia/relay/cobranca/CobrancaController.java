@@ -98,16 +98,20 @@ public class CobrancaController {
         try {
             String event = String.valueOf(payload.get("event"));
             Object pObj = payload.get("payment");
-            String customer = null, status = null;
+            String customer = null, status = null, paymentId = null;
             if (pObj instanceof Map<?, ?> p) {
                 customer = p.get("customer") == null ? null : String.valueOf(p.get("customer"));
                 status = p.get("status") == null ? null : String.valueOf(p.get("status"));
+                paymentId = p.get("id") == null ? null : String.valueOf(p.get("id"));
             }
-            log.info("[asaas-webhook] event={} status={} customer={}", event, status, customer);
-            // Pagamento efetivado: confirma e desbloqueia a loja.
+            log.info("[asaas-webhook] event={} status={} customer={} payment={}", event, status, customer, paymentId);
+            // Pagamento efetivado: baixa e desbloqueio.
             if ("PAYMENT_CONFIRMED".equals(event) || "PAYMENT_RECEIVED".equals(event)
                     || "CONFIRMED".equals(status) || "RECEIVED".equals(status)) {
-                cobranca.confirmarPagamentoAsaas(customer);
+                // 1º tenta lote (várias lojas); se não for lote, fluxo de loja única.
+                if (!cobranca.confirmarLote(paymentId)) {
+                    cobranca.confirmarPagamentoAsaas(customer);
+                }
             }
         } catch (Exception e) {
             log.warn("[asaas-webhook] erro ao processar: {}", e.getMessage());

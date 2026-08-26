@@ -35,6 +35,42 @@ public class LicencaController {
         this.cobrancas = cobrancas;
     }
 
+    /** GET /api/licenca/lojas — lojas do cliente logado + a pendência de cada uma (pro cliente escolher). */
+    @GetMapping("/licenca/lojas")
+    public ResponseEntity<Map<String, Object>> minhasLojas() {
+        RelayPrincipal p = CurrentUser.get();
+        if (p == null || p.cnpjs() == null || p.cnpjs().isEmpty()) {
+            return ResponseEntity.ok(ApiEnvelope.ok(java.util.List.of()));
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(cobrancas.pendencias(p.cnpjs())));
+    }
+
+    /** POST /api/licenca/pagar-lote  body: {"cnpjs":["...","..."]} — gera UM pagamento somando as lojas escolhidas. */
+    @PostMapping("/licenca/pagar-lote")
+    public ResponseEntity<Map<String, Object>> pagarLote(@RequestBody Map<String, Object> body) {
+        RelayPrincipal p = CurrentUser.get();
+        @SuppressWarnings("unchecked")
+        java.util.List<String> pedidos = body != null && body.get("cnpjs") instanceof java.util.List
+                ? (java.util.List<String>) body.get("cnpjs") : java.util.List.of();
+        // só permite lojas do próprio usuário
+        java.util.List<String> cnpjs = new java.util.ArrayList<>();
+        for (String raw : pedidos) {
+            String c = raw == null ? "" : raw.replaceAll("\\D", "");
+            if (p != null && p.cnpjs() != null && p.cnpjs().contains(c)) cnpjs.add(c);
+        }
+        if (cnpjs.isEmpty()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Selecione ao menos uma loja"));
+        try {
+            CobrancaService.Resultado r = cobrancas.gerarLote(cnpjs, p == null ? null : p.email());
+            return ResponseEntity.ok(ApiEnvelope.ok(Map.of(
+                    "linkPagamento", r.linkPagamento() == null ? "" : r.linkPagamento(),
+                    "valor", r.valor(), "vencimento", r.vencimento(), "item", r.item())));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(ApiEnvelope.fail("Falha ao gerar pagamento: " + e.getMessage()));
+        }
+    }
+
     /** POST /api/licenca/pagar — o próprio cliente gera o link de pagamento da loja dele (Android). */
     @PostMapping("/licenca/pagar")
     public ResponseEntity<Map<String, Object>> pagar(@RequestHeader(value = "X-Empresa", required = false) String empresa) {
