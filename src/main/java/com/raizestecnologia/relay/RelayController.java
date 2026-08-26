@@ -59,7 +59,9 @@ public class RelayController {
             m.put("cnpj", cnpj);
             m.put("nome", en.getValue());
             m.put("online", hub.online(cnpj));
-            m.put("bloqueada", lojas.estaBloqueada(cnpj));
+            boolean bloq = lojas.estaBloqueada(cnpj);
+            m.put("bloqueada", bloq);
+            m.put("motivo", bloq ? lojas.motivo(cnpj) : "");
             lista.add(m);
         }
         return env(lista);
