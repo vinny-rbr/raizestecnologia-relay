@@ -22,6 +22,10 @@ public class DeviceToken {
     @Column(name = "platform")
     private String platform;
 
+    /** Versao do app instalada neste aparelho (ex.: "1.0.58"). Mandada pelo app ao registrar o token. */
+    @Column(name = "app_version", length = 20)
+    private String appVersion;
+
     @Column(name = "atualizado_em")
     private Instant atualizadoEm = Instant.now();
 
@@ -40,6 +44,8 @@ public class DeviceToken {
     public void setUserId(Long userId) { this.userId = userId; }
     public String getPlatform() { return platform; }
     public void setPlatform(String platform) { this.platform = platform; }
+    public String getAppVersion() { return appVersion; }
+    public void setAppVersion(String appVersion) { this.appVersion = appVersion; }
     public Instant getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(Instant atualizadoEm) { this.atualizadoEm = atualizadoEm; }
 }

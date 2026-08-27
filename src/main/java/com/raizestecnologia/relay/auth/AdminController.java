@@ -31,12 +31,14 @@ public class AdminController {
     private final com.raizestecnologia.relay.audit.AuditoriaRepository auditoria;
     private final com.raizestecnologia.relay.loja.LojaService lojas;
     private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
+    private final com.raizestecnologia.relay.push.DeviceTokenRepository devices;
 
     public AdminController(AppUserRepository users, UserEmpresaRepository vinculos,
                            PasswordEncoder encoder, AgentHub hub,
                            com.raizestecnologia.relay.audit.AuditoriaRepository auditoria,
                            com.raizestecnologia.relay.loja.LojaService lojas,
-                           com.raizestecnologia.relay.cobranca.CobrancaService cobrancas) {
+                           com.raizestecnologia.relay.cobranca.CobrancaService cobrancas,
+                           com.raizestecnologia.relay.push.DeviceTokenRepository devices) {
         this.users = users;
         this.vinculos = vinculos;
         this.encoder = encoder;
@@ -44,6 +46,7 @@ public class AdminController {
         this.auditoria = auditoria;
         this.lojas = lojas;
         this.cobrancas = cobrancas;
+        this.devices = devices;
     }
 
     // ---- Auditoria (DONO) ------------------------------------------------
@@ -192,6 +195,17 @@ public class AdminController {
         for (AgentHub.Empresa e : hub.empresas()) {
             conhecidas.putIfAbsent(e.cnpj().replaceAll("\\D", ""), e.nome());
         }
+        // aparelhos (celulares) e versao do app por loja
+        java.util.Map<String, Integer> devCount = new java.util.HashMap<>();
+        java.util.Map<String, java.util.TreeSet<String>> devVers = new java.util.HashMap<>();
+        for (Object[] r : devices.statsPorLoja()) {
+            String c = r[0] == null ? "" : r[0].toString().replaceAll("\\D", "");
+            if (c.isBlank()) continue;
+            devCount.merge(c, 1, Integer::sum);
+            String v = r[1] == null ? null : r[1].toString().trim();
+            if (v != null && !v.isEmpty()) devVers.computeIfAbsent(c, k -> new java.util.TreeSet<>()).add(v);
+        }
+
         List<Map<String, Object>> lista = new ArrayList<>();
         for (var en : conhecidas.entrySet()) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -210,6 +224,9 @@ public class AdminController {
             m.put("grupo", lojas.grupo(en.getKey()));
             java.time.LocalDate implVenc = lojas.implantacaoVence(en.getKey());
             m.put("implantacaoVence", implVenc == null ? null : implVenc.toString());
+            m.put("dispositivos", devCount.getOrDefault(en.getKey(), 0));
+            var vs = devVers.get(en.getKey());
+            m.put("appVersion", vs == null || vs.isEmpty() ? null : String.join(", ", vs));
             m.put("diaVencimento", lojas.diaVencimento(en.getKey()));
             // Estado de cobrança (implantação -> 1ª proporcional -> mensalidade).
             var lojaOpt = lojas.obter(en.getKey());

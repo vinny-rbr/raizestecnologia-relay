@@ -37,11 +37,13 @@ public class PushController {
         }
         Long userId = parseId(user.userId());
         String platform = body.getOrDefault("platform", "");
+        String appVersion = body.getOrDefault("appVersion", body.getOrDefault("version", ""));
 
         // upsert por token: se ja existe, so reassocia ao usuario/plataforma atuais
         DeviceToken dt = tokens.findByToken(token).orElseGet(() -> new DeviceToken(token, userId, platform));
         dt.setUserId(userId);
         dt.setPlatform(platform);
+        if (appVersion != null && !appVersion.isBlank()) dt.setAppVersion(appVersion.trim());
         dt.setAtualizadoEm(Instant.now());
         tokens.save(dt);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("registrado", true)));
