@@ -7,9 +7,16 @@ import com.raizestecnologia.relay.loja.Loja;
 import com.raizestecnologia.relay.loja.LojaRepository;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -87,6 +94,34 @@ public class RevendaController {
         l.setBloqueada(false);
         lojas.save(l);
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
+    }
+
+    /**
+     * GET /api/revenda/instalador-base — o instalador-base LIMPO (zip), em streaming a
+     * partir do release do GitHub (o GitHub nao libera CORS, entao o painel baixa por aqui:
+     * o relay ja responde com CORS aberto). O navegador injeta o codigo do revendedor no
+     * RaizesAgente.xml. Sem auth: o base e igual pra todos e nao tem segredo.
+     */
+    @GetMapping("/instalador-base")
+    public ResponseEntity<InputStreamResource> instaladorBase() {
+        String url = "https://github.com/vinny-rbr/raizestecnologia-agente/releases/download/instalador-base/instalador-base.zip";
+        try {
+            HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build();
+            HttpResponse<java.io.InputStream> up = http.send(
+                    HttpRequest.newBuilder(URI.create(url)).header("User-Agent", "meugiro-relay").GET().build(),
+                    HttpResponse.BodyHandlers.ofInputStream());
+            if (up.statusCode() != 200) {
+                return ResponseEntity.status(502).build();
+            }
+            ResponseEntity.BodyBuilder b = ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"instalador-base.zip\"")
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600");
+            up.headers().firstValue("content-length").ifPresent(len -> b.header(HttpHeaders.CONTENT_LENGTH, len));
+            return b.body(new InputStreamResource(up.body()));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).build();
+        }
     }
 
     // ---- helpers ----
