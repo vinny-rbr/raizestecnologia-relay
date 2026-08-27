@@ -54,8 +54,9 @@ public class CobrancaService {
         LocalDate hoje = LocalDate.now(BRT);
 
         if (!l.isImplantacaoPaga()) {
-            // implantação é "à vista" (na instalação); dá uma folga de 3 dias no vencimento.
-            return new Estado("implantacao", false, "Implantação", IMPLANTACAO, hoje.plusDays(3).toString(), false);
+            // vencimento definido pelo master; senão, folga de 3 dias após a instalação.
+            String venc = l.getImplantacaoVence() != null ? l.getImplantacaoVence().toString() : hoje.plusDays(3).toString();
+            return new Estado("implantacao", false, "Implantação", IMPLANTACAO, venc, false);
         }
         LocalDate primeira = primeiroVenc(ativ, dia);
         if (l.getMensalidadePagaAte() == null) {

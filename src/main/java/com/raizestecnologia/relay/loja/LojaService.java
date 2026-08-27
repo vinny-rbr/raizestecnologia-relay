@@ -127,6 +127,20 @@ public class LojaService {
         return obter(cnpj).map(Loja::getGrupo).orElse(null);
     }
 
+    /** Master define o vencimento da implantação (null = padrão de 3 dias). */
+    @Transactional
+    public void definirImplantacaoVence(String cnpj, java.time.LocalDate data) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setImplantacaoVence(data);
+        repo.save(l);
+    }
+
+    public java.time.LocalDate implantacaoVence(String cnpj) {
+        return obter(cnpj).map(Loja::getImplantacaoVence).orElse(null);
+    }
+
     /** A loja (entidade) por cnpj, se existir. */
     public java.util.Optional<Loja> obter(String cnpj) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");

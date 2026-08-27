@@ -64,6 +64,10 @@ public class Loja {
     @Column(name = "implantacao_paga_em")
     private Instant implantacaoPagaEm;
 
+    /** Vencimento da implantação (definido pelo master). null = padrão (3 dias após a instalação). */
+    @Column(name = "implantacao_vence")
+    private java.time.LocalDate implantacaoVence;
+
     /** Mensalidade paga ATÉ este dia 5 (inclusive). null = nenhuma mensalidade paga ainda. */
     @Column(name = "mensalidade_paga_ate")
     private java.time.LocalDate mensalidadePagaAte;
@@ -110,6 +114,8 @@ public class Loja {
     public void setImplantacaoPaga(boolean v) { this.implantacaoPaga = v; }
     public Instant getImplantacaoPagaEm() { return implantacaoPagaEm; }
     public void setImplantacaoPagaEm(Instant v) { this.implantacaoPagaEm = v; }
+    public java.time.LocalDate getImplantacaoVence() { return implantacaoVence; }
+    public void setImplantacaoVence(java.time.LocalDate v) { this.implantacaoVence = v; }
     public java.time.LocalDate getMensalidadePagaAte() { return mensalidadePagaAte; }
     public void setMensalidadePagaAte(java.time.LocalDate v) { this.mensalidadePagaAte = v; }
     public boolean isBloqueada() { return bloqueada; }

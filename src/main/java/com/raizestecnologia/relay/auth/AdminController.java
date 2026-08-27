@@ -208,6 +208,8 @@ public class AdminController {
             m.put("mensalidade", mens);
             m.put("implantacao", IMPLANTACAO);
             m.put("grupo", lojas.grupo(en.getKey()));
+            java.time.LocalDate implVenc = lojas.implantacaoVence(en.getKey());
+            m.put("implantacaoVence", implVenc == null ? null : implVenc.toString());
             m.put("diaVencimento", lojas.diaVencimento(en.getKey()));
             // Estado de cobrança (implantação -> 1ª proporcional -> mensalidade).
             var lojaOpt = lojas.obter(en.getKey());
@@ -347,6 +349,24 @@ public class AdminController {
         lojas.definirGrupo(c, grupo);
         registrarAcao(c, "loja_grupo", grupo == null || grupo.isBlank() ? "Sem grupo" : "Grupo: " + grupo);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "grupo", grupo == null ? "" : grupo)));
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/implantacao-vencimento  body: {"data":"YYYY-MM-DD"} (vazio = padrão de 3 dias). */
+    @PostMapping("/lojas/{cnpj}/implantacao-vencimento")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirImplantacaoVenc(@PathVariable String cnpj,
+                                                                      @RequestBody(required = false) Map<String, String> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String data = body == null ? null : body.get("data");
+        try {
+            java.time.LocalDate d = (data == null || data.isBlank()) ? null : java.time.LocalDate.parse(data.trim());
+            lojas.definirImplantacaoVence(c, d);
+            registrarAcao(c, "loja_implantacao_venc", d == null ? "Implantação: vencimento padrão" : "Implantação vence " + d);
+            return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "implantacaoVence", d == null ? "" : d.toString())));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("data invalida (use YYYY-MM-DD)"));
+        }
     }
 
     private static final java.time.ZoneId BRT = java.time.ZoneId.of("America/Sao_Paulo");
