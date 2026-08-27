@@ -237,6 +237,7 @@ public class AdminController {
                 m.put("itemCobranca", est.item());
                 m.put("valorAtual", est.valor());
                 m.put("vencimentoAtual", est.vencimento());
+                m.put("pagavel", est.pagavel());
                 m.put("primeiraMensalidade", est.primeiraMensalidade());
                 // compatibilidade com a UI atual
                 m.put("proximaCobranca", est.vencimento());
@@ -248,6 +249,7 @@ public class AdminController {
                 m.put("itemCobranca", "Implantação");
                 m.put("valorAtual", IMPLANTACAO);
                 m.put("vencimentoAtual", null);
+                m.put("pagavel", true);
                 m.put("primeiraMensalidade", false);
                 m.put("proximaCobranca", null);
                 m.put("valorProximaCobranca", null);

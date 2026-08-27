@@ -43,9 +43,17 @@ public class CobrancaService {
     public String asaasBaseUrl() { return asaas.baseUrl(); }
     public String asaasContaNome() throws Exception { return asaas.contaNome(); }
 
-    /** Estado de cobrança atual da loja (o que está pendente agora). */
+    /** Quantos dias antes do vencimento a mensalidade "abre" para pagamento (evita pagar meses adiantado). */
+    public static final int LIBERA_PAGAMENTO_DIAS = 10;
+
+    /** Estado de cobrança atual da loja (o que está pendente agora). pagavel=false → ainda não abriu. */
     public record Estado(String fase, boolean implantacaoPaga, String item, double valor,
-                         String vencimento, boolean primeiraMensalidade) {}
+                         String vencimento, boolean primeiraMensalidade, boolean pagavel) {}
+
+    /** A mensalidade só abre p/ pagamento LIBERA_PAGAMENTO_DIAS antes do vencimento (ou depois de vencida). */
+    private static boolean abre(LocalDate vencimento, LocalDate hoje) {
+        return !hoje.isBefore(vencimento.minusDays(LIBERA_PAGAMENTO_DIAS));
+    }
 
     public Estado estado(Loja l) {
         double mens = l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO;
@@ -54,18 +62,18 @@ public class CobrancaService {
         LocalDate hoje = LocalDate.now(BRT);
 
         if (!l.isImplantacaoPaga()) {
-            // vencimento definido pelo master; senão, folga de 3 dias após a instalação.
+            // vencimento definido pelo master; senão, folga de 3 dias após a instalação. Implantação sempre pagável.
             String venc = l.getImplantacaoVence() != null ? l.getImplantacaoVence().toString() : hoje.plusDays(3).toString();
-            return new Estado("implantacao", false, "Implantação", IMPLANTACAO, venc, false);
+            return new Estado("implantacao", false, "Implantação", IMPLANTACAO, venc, false, true);
         }
         LocalDate primeira = primeiroVenc(ativ, dia);
         if (l.getMensalidadePagaAte() == null) {
             long dias = ChronoUnit.DAYS.between(ativ, primeira);
             double valor = round2(mens * dias / 30.0);
-            return new Estado("mensalidade", true, "1ª mensalidade (proporcional)", valor, primeira.toString(), true);
+            return new Estado("mensalidade", true, "1ª mensalidade (proporcional)", valor, primeira.toString(), true, abre(primeira, hoje));
         }
         LocalDate prox = proximoVenc(l.getMensalidadePagaAte().plusDays(1), dia);
-        return new Estado("mensalidade", true, "Mensalidade", round2(mens), prox.toString(), false);
+        return new Estado("mensalidade", true, "Mensalidade", round2(mens), prox.toString(), false, abre(prox, hoje));
     }
 
     public record Resultado(String linkPagamento, double valor, String vencimento, String item, boolean assinaturaCriada) {}
@@ -77,6 +85,10 @@ public class CobrancaService {
         Loja l = carregar(cnpj);
         if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
         Estado est = estado(l);
+        if (!est.pagavel()) {
+            throw new IllegalArgumentException("A mensalidade abre para pagamento " + LIBERA_PAGAMENTO_DIAS
+                    + " dias antes do vencimento (" + est.vencimento() + ").");
+        }
 
         String cust = l.getAsaasCustomerId();
         if (cust == null || cust.isBlank()) {
@@ -130,6 +142,8 @@ public class CobrancaService {
             m.put("fase", est.fase());
             m.put("item", est.item());
             m.put("valor", est.valor());
+            m.put("vencimento", est.vencimento());
+            m.put("pagavel", est.pagavel());
             m.put("bloqueada", l.isBloqueada());
             out.add(m);
         }
@@ -155,6 +169,10 @@ public class CobrancaService {
         for (Loja l : sel) {
             if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
             Estado est = estado(l);
+            if (!est.pagavel()) {
+                throw new IllegalArgumentException("“" + l.getNome() + "” ainda não abriu para pagamento (abre "
+                        + LIBERA_PAGAMENTO_DIAS + " dias antes do vencimento, " + est.vencimento() + ").");
+            }
             total += est.valor();
             String tipo = "implantacao".equals(est.fase()) ? "IMPLANTACAO" : "MENSALIDADE";
             if (itens.length() > 0) itens.append(";");
