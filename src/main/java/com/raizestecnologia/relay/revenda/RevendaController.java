@@ -2,6 +2,8 @@ package com.raizestecnologia.relay.revenda;
 
 import com.raizestecnologia.relay.AgentHub;
 import com.raizestecnologia.relay.auth.ApiEnvelope;
+import com.raizestecnologia.relay.auth.AppUser;
+import com.raizestecnologia.relay.auth.AppUserRepository;
 import com.raizestecnologia.relay.auth.JwtService;
 import com.raizestecnologia.relay.loja.Loja;
 import com.raizestecnologia.relay.loja.LojaRepository;
@@ -11,6 +13,7 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
@@ -41,12 +44,17 @@ public class RevendaController {
     private final LojaRepository lojas;
     private final AgentHub hub;
     private final JwtService jwt;
+    private final AppUserRepository users;
+    private final PasswordEncoder encoder;
 
-    public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt) {
+    public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt,
+                             AppUserRepository users, PasswordEncoder encoder) {
         this.revendas = revendas;
         this.lojas = lojas;
         this.hub = hub;
         this.jwt = jwt;
+        this.users = users;
+        this.encoder = encoder;
     }
 
     /** POST /api/revenda/cadastro — cadastra um revendedor (CPF/CNPJ + dados) e ja loga. */
@@ -62,12 +70,22 @@ public class RevendaController {
         }
     }
 
-    /** POST /api/revenda/login — {email, senha} -> token. */
+    /** POST /api/revenda/login — {email, senha} -> token. Aceita revendedor OU o master (DONO). */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> b) {
-        return revendas.autenticar(b.get("email"), b.get("senha"))
-                .map(r -> ResponseEntity.ok(ApiEnvelope.ok(sessao(r))))
-                .orElseGet(() -> ResponseEntity.status(401).body(ApiEnvelope.fail("E-mail ou senha inválidos")));
+        String email = b.get("email");
+        String senha = b.get("senha");
+        // 1) revendedor
+        var rev = revendas.autenticar(email, senha);
+        if (rev.isPresent()) return ResponseEntity.ok(ApiEnvelope.ok(sessao(rev.get())));
+        // 2) master (mesmo login do celular; so DONO acessa o painel como master)
+        if (email != null && senha != null) {
+            AppUser u = users.findByEmailIgnoreCase(email.trim()).orElse(null);
+            if (u != null && u.isAtivo() && "DONO".equals(u.getRole()) && encoder.matches(senha, u.getSenhaHash())) {
+                return ResponseEntity.ok(ApiEnvelope.ok(masterSessao(u)));
+            }
+        }
+        return ResponseEntity.status(401).body(ApiEnvelope.fail("E-mail ou senha inválidos"));
     }
 
     /** GET /api/revenda/lojas — as lojas do revendedor logado. */
@@ -128,11 +146,24 @@ public class RevendaController {
 
     private Map<String, Object> sessao(Revenda r) {
         Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tipo", "revenda");
         m.put("id", r.getId());
         m.put("nome", r.getNome());
         m.put("email", r.getEmail());
         m.put("codigo", r.getCodigo());
         m.put("token", jwt.generate(r.getId(), r.getEmail(), "REVENDA"));
+        return m;
+    }
+
+    /** Sessao do master (DONO): entra no painel com os poderes que ja tem no celular. */
+    private Map<String, Object> masterSessao(AppUser u) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tipo", "master");
+        m.put("id", u.getId());
+        m.put("nome", u.getNome() == null || u.getNome().isBlank() ? "Administrador" : u.getNome());
+        m.put("email", u.getEmail());
+        m.put("codigo", null);
+        m.put("token", jwt.generate(u.getId(), u.getEmail(), u.getRole()));
         return m;
     }
 
