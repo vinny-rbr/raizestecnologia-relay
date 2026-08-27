@@ -207,6 +207,7 @@ public class AdminController {
             m.put("diasUso", diasUso(ativ));
             m.put("mensalidade", mens);
             m.put("implantacao", IMPLANTACAO);
+            m.put("grupo", lojas.grupo(en.getKey()));
             m.put("diaVencimento", lojas.diaVencimento(en.getKey()));
             // Estado de cobrança (implantação -> 1ª proporcional -> mensalidade).
             var lojaOpt = lojas.obter(en.getKey());
@@ -333,6 +334,19 @@ public class AdminController {
         lojas.definirDiaVencimento(c, dia);
         registrarAcao(c, "loja_dia_vencimento", "Vencimento dia " + dia);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "diaVencimento", dia)));
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/grupo  body: {"grupo": "..."} — organiza a loja num grupo (vazio = remove). */
+    @PostMapping("/lojas/{cnpj}/grupo")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirGrupo(@PathVariable String cnpj,
+                                                            @RequestBody(required = false) Map<String, String> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String grupo = body == null ? null : body.get("grupo");
+        lojas.definirGrupo(c, grupo);
+        registrarAcao(c, "loja_grupo", grupo == null || grupo.isBlank() ? "Sem grupo" : "Grupo: " + grupo);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "grupo", grupo == null ? "" : grupo)));
     }
 
     private static final java.time.ZoneId BRT = java.time.ZoneId.of("America/Sao_Paulo");

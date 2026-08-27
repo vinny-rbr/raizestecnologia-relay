@@ -30,6 +30,10 @@ public class Loja {
     @Column(name = "revenda_ativada", nullable = false, columnDefinition = "boolean not null default false")
     private boolean revendaAtivada = false;
 
+    /** Grupo/pasta pra organizar lojas (ex.: um cliente com varias lojas). Rotulo livre. null = sem grupo. */
+    @Column(name = "grupo", length = 80)
+    private String grupo;
+
     /** Quando o cliente começou a usar (1ª ativação). Base do "há quantos dias usa" e da cobrança proporcional. */
     @Column(name = "ativada_em")
     private Instant ativadaEm;
@@ -86,6 +90,8 @@ public class Loja {
     public void setRevendaCodigo(String c) { this.revendaCodigo = c; }
     public boolean isRevendaAtivada() { return revendaAtivada; }
     public void setRevendaAtivada(boolean a) { this.revendaAtivada = a; }
+    public String getGrupo() { return grupo; }
+    public void setGrupo(String grupo) { this.grupo = grupo == null || grupo.isBlank() ? null : grupo.trim(); }
     public Instant getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(Instant atualizadoEm) { this.atualizadoEm = atualizadoEm; }
     public Instant getAtivadaEm() { return ativadaEm; }

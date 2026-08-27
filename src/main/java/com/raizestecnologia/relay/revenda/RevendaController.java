@@ -114,6 +114,22 @@ public class RevendaController {
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
     }
 
+    /** POST /api/revenda/lojas/{cnpj}/grupo — organiza a loja num grupo (vazio = remove). Só as lojas do revendedor. */
+    @PostMapping("/lojas/{cnpj}/grupo")
+    public ResponseEntity<Map<String, Object>> definirGrupo(HttpServletRequest req, @PathVariable String cnpj,
+                                                            @RequestBody(required = false) Map<String, String> body) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        Loja l = lojas.findById(c).orElse(null);
+        if (l == null || !r.getCodigo().equals(l.getRevendaCodigo())) {
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        }
+        l.setGrupo(body == null ? null : body.get("grupo"));
+        lojas.save(l);
+        return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
+    }
+
     /**
      * GET /api/revenda/instalador-base — o instalador-base LIMPO (zip), em streaming a
      * partir do release do GitHub (o GitHub nao libera CORS, entao o painel baixa por aqui:
@@ -195,6 +211,7 @@ public class RevendaController {
         else status = "ativa";
         m.put("status", status);
         m.put("bloqueada", l.isBloqueada());
+        m.put("grupo", l.getGrupo());
         return m;
     }
 

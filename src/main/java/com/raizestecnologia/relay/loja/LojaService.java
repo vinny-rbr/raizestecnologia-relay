@@ -113,6 +113,20 @@ public class LojaService {
         return obter(cnpj).map(Loja::getDiaVencimento).orElse(5);
     }
 
+    /** Define (ou limpa, com null/"") o grupo/pasta de organizacao da loja. */
+    @Transactional
+    public void definirGrupo(String cnpj, String grupo) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setGrupo(grupo);
+        repo.save(l);
+    }
+
+    public String grupo(String cnpj) {
+        return obter(cnpj).map(Loja::getGrupo).orElse(null);
+    }
+
     /** A loja (entidade) por cnpj, se existir. */
     public java.util.Optional<Loja> obter(String cnpj) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
