@@ -22,6 +22,14 @@ public class Loja {
     @Column(name = "atualizado_em")
     private Instant atualizadoEm = Instant.now();
 
+    /** Codigo da revenda dona desta loja (vem do instalador do revendedor). null = venda direta. */
+    @Column(name = "revenda_codigo", length = 20)
+    private String revendaCodigo;
+
+    /** true = revenda ja pagou os R$30 e liberou. false + revendaCodigo != null = aguardando ativacao. */
+    @Column(name = "revenda_ativada", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean revendaAtivada = false;
+
     /** Quando o cliente começou a usar (1ª ativação). Base do "há quantos dias usa" e da cobrança proporcional. */
     @Column(name = "ativada_em")
     private Instant ativadaEm;
@@ -74,6 +82,10 @@ public class Loja {
     public String getCnpj() { return cnpj; }
     public String getNome() { return nome; }
     public void setNome(String nome) { this.nome = nome; }
+    public String getRevendaCodigo() { return revendaCodigo; }
+    public void setRevendaCodigo(String c) { this.revendaCodigo = c; }
+    public boolean isRevendaAtivada() { return revendaAtivada; }
+    public void setRevendaAtivada(boolean a) { this.revendaAtivada = a; }
     public Instant getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(Instant atualizadoEm) { this.atualizadoEm = atualizadoEm; }
     public Instant getAtivadaEm() { return ativadaEm; }

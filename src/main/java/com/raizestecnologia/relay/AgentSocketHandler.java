@@ -42,6 +42,7 @@ public class AgentSocketHandler extends TextWebSocketHandler {
                 String cnpj = node.path("cnpj").asText("");
                 String nome = node.path("nome").asText("");
                 String key = node.path("key").asText("");
+                String revenda = node.path("revenda").asText("");
                 boolean authOn = !agentKey.isBlank();
                 boolean chaveInvalida = authOn && !key.equals(agentKey);
                 if (cnpj.isBlank()) {
@@ -53,7 +54,7 @@ public class AgentSocketHandler extends TextWebSocketHandler {
                     if (chaveInvalida) {
                         log.warn("[agent-auth] TRANSICAO: agente sem chave valida (cnpj {}) - aceito por enquanto.", cnpj);
                     }
-                    hub.register(cnpj, nome, session);
+                    hub.register(cnpj, nome, revenda, session);
                     session.sendMessage(new TextMessage("{\"type\":\"registered\"}"));
                 }
             }

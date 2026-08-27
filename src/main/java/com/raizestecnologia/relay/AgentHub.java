@@ -42,10 +42,11 @@ public class AgentHub {
     public record Empresa(String cnpj, String nome) {}
     public record Resposta(int status, String body) {}
 
-    public void register(String cnpj, String nome, WebSocketSession session) {
+    public void register(String cnpj, String nome, String revenda, WebSocketSession session) {
         agents.put(cnpj, session);
         names.put(cnpj, nome == null ? "" : nome);
-        publisher.publishEvent(new AgentConnectedEvent(cnpj, names.get(cnpj)));
+        publisher.publishEvent(new AgentConnectedEvent(cnpj, names.get(cnpj),
+                revenda == null || revenda.isBlank() ? null : revenda.trim().toUpperCase()));
     }
 
     public void remove(WebSocketSession session) {

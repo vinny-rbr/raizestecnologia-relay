@@ -35,6 +35,10 @@ public class LojaService {
         try {
             Loja l = repo.findById(cnpj).orElseGet(() -> new Loja(cnpj, ev.nome()));
             if (ev.nome() != null && !ev.nome().isBlank()) l.setNome(ev.nome());
+            // Vincula a revenda na 1a vez que a loja aparece com um codigo (fica com quem instalou).
+            if (l.getRevendaCodigo() == null && ev.revenda() != null && !ev.revenda().isBlank()) {
+                l.setRevendaCodigo(ev.revenda());
+            }
             l.setAtualizadoEm(Instant.now());
             if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now()); // 1a ativacao (base da cobranca)
             repo.save(l);

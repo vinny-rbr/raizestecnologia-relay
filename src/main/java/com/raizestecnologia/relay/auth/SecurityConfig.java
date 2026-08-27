@@ -46,6 +46,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/health", "/api/auth/login").permitAll()
                         .requestMatchers("/agent", "/agent/**").permitAll()
+                        // Revenda tem token proprio (role REVENDA); a autorizacao e feita no RevendaController.
+                        .requestMatchers("/api/revenda/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("DONO")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
