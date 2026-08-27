@@ -25,6 +25,7 @@ public class CobrancaService {
     private static final ZoneId BRT = ZoneId.of("America/Sao_Paulo");
     public static final double IMPLANTACAO = 50.0;
     public static final double MENSALIDADE_PADRAO = 30.0;
+    private static final int DIA_COBRANCA = 5;
     /** Dias de tolerância após o vencimento antes de suspender por inadimplência. */
     private static final int TOLERANCIA_DIAS = 5;
 
@@ -83,6 +84,9 @@ public class CobrancaService {
     public Resultado gerar(String cnpj, String email) throws Exception {
         if (!asaas.enabled()) throw new IllegalStateException("Asaas não configurado (defina ASAAS_API_KEY no servidor).");
         Loja l = carregar(cnpj);
+        if (l.getRevendaCodigo() != null) {
+            throw new IllegalArgumentException("O pagamento desta loja é feito pela revenda, não pelo aplicativo.");
+        }
         if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
         Estado est = estado(l);
         if (!est.pagavel()) {
@@ -143,7 +147,8 @@ public class CobrancaService {
             m.put("item", est.item());
             m.put("valor", est.valor());
             m.put("vencimento", est.vencimento());
-            m.put("pagavel", est.pagavel());
+            m.put("pagavel", est.pagavel() && l.getRevendaCodigo() == null);
+            m.put("gerenciadoPorRevenda", l.getRevendaCodigo() != null);
             m.put("bloqueada", l.isBloqueada());
             out.add(m);
         }
@@ -237,6 +242,30 @@ public class CobrancaService {
             l.setImplantacaoPagaEm(Instant.now());
             liberar(l);
         }, manual ? "implantacao_paga_manual" : "implantacao_paga_asaas");
+    }
+
+    // ---- Revenda: o revendedor paga R$30/mês/loja ao dono ----
+    public static final double REVENDA_MENSALIDADE = 30.0;
+
+    /** Prepara a loja instalada por revendedor pro ciclo de R$30/mês (dia 5, sem implantação
+     *  separada; 1º mês coberto pela ativação). Depois disso o auto-bloqueio já cuida do resto. */
+    @Transactional
+    public void ativarRevendaStore(String cnpj) {
+        apply(cnpj, l -> {
+            if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
+            l.setDiaVencimento(DIA_COBRANCA);
+            l.setMensalidade(REVENDA_MENSALIDADE);
+            l.setImplantacaoPaga(true);
+            LocalDate ativ = l.getAtivadaEm().atZone(BRT).toLocalDate();
+            l.setMensalidadePagaAte(primeiroVenc(ativ, DIA_COBRANCA));
+            liberar(l);
+        }, "revenda_ciclo_ativado");
+    }
+
+    /** Revendedor pagou os R$30 do mês desta loja ao dono: dá baixa (avança o ciclo) e libera. */
+    @Transactional
+    public void revendaPagou(String cnpj) {
+        marcarMensalidadePaga(cnpj, true);
     }
 
     /** Marca a MENSALIDADE atual como paga: avança o "pago até" para o próximo dia 5. */

@@ -46,15 +46,18 @@ public class RevendaController {
     private final JwtService jwt;
     private final AppUserRepository users;
     private final PasswordEncoder encoder;
+    private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
 
     public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt,
-                             AppUserRepository users, PasswordEncoder encoder) {
+                             AppUserRepository users, PasswordEncoder encoder,
+                             com.raizestecnologia.relay.cobranca.CobrancaService cobrancas) {
         this.revendas = revendas;
         this.lojas = lojas;
         this.hub = hub;
         this.jwt = jwt;
         this.users = users;
         this.encoder = encoder;
+        this.cobrancas = cobrancas;
     }
 
     /** POST /api/revenda/cadastro — cadastra um revendedor (CPF/CNPJ + dados) e ja loga. */
@@ -111,7 +114,51 @@ public class RevendaController {
         l.setRevendaAtivada(true);
         l.setBloqueada(false);
         lojas.save(l);
+        // monta o ciclo de R$30/mês que o revendedor paga ao dono (1º mês coberto pela ativação)
+        cobrancas.ativarRevendaStore(c);
+        return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(lojas.findById(c).orElse(l))));
+    }
+
+    /** POST /api/revenda/lojas/{cnpj}/bloquear — o revendedor bloqueia o cliente dele (não pagou a ele). */
+    @PostMapping("/lojas/{cnpj}/bloquear")
+    public ResponseEntity<Map<String, Object>> bloquear(HttpServletRequest req, @PathVariable String cnpj,
+                                                        @RequestBody(required = false) Map<String, String> body) {
+        Loja l = lojaDoRevendedor(req, cnpj);
+        if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        l.setBloqueada(true);
+        String motivo = body == null ? null : body.get("motivo");
+        l.setMotivoBloqueio(motivo == null || motivo.isBlank() ? "Bloqueado pela revenda" : motivo);
+        lojas.save(l);
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
+    }
+
+    /** POST /api/revenda/lojas/{cnpj}/desbloquear — o revendedor libera o cliente dele. */
+    @PostMapping("/lojas/{cnpj}/desbloquear")
+    public ResponseEntity<Map<String, Object>> desbloquear(HttpServletRequest req, @PathVariable String cnpj) {
+        Loja l = lojaDoRevendedor(req, cnpj);
+        if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        l.setBloqueada(false);
+        l.setMotivoBloqueio(null);
+        lojas.save(l);
+        return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
+    }
+
+    /** POST /api/revenda/lojas/{cnpj}/pago — o revendedor pagou os R$30 do mês desta loja ao dono. */
+    @PostMapping("/lojas/{cnpj}/pago")
+    public ResponseEntity<Map<String, Object>> pago(HttpServletRequest req, @PathVariable String cnpj) {
+        Loja l = lojaDoRevendedor(req, cnpj);
+        if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        cobrancas.revendaPagou(l.getCnpj());
+        return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(lojas.findById(l.getCnpj()).orElse(l))));
+    }
+
+    /** Loja pelo cnpj, só se for do revendedor logado; null caso contrário. */
+    private Loja lojaDoRevendedor(HttpServletRequest req, String cnpj) {
+        Revenda r = autorizar(req);
+        if (r == null) return null;
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        Loja l = lojas.findById(c).orElse(null);
+        return (l != null && r.getCodigo().equals(l.getRevendaCodigo())) ? l : null;
     }
 
     /** POST /api/revenda/lojas/{cnpj}/grupo — organiza a loja num grupo (vazio = remove). Só as lojas do revendedor. */
@@ -212,6 +259,12 @@ public class RevendaController {
         m.put("status", status);
         m.put("bloqueada", l.isBloqueada());
         m.put("grupo", l.getGrupo());
+        // ciclo de R$30/mês que o revendedor paga ao dono
+        m.put("mensalidade", com.raizestecnologia.relay.cobranca.CobrancaService.REVENDA_MENSALIDADE);
+        LocalDate venc = proximoVenc(l.getDiaVencimento());
+        boolean pago = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(venc);
+        m.put("pago", pago);
+        m.put("motivo", l.isBloqueada() ? (l.getMotivoBloqueio() == null ? "" : l.getMotivoBloqueio()) : "");
         return m;
     }
 

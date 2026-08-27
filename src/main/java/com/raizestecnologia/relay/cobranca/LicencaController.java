@@ -113,6 +113,10 @@ public class LicencaController {
         out.put("ativa", !bloqueada);
         out.put("bloqueada", bloqueada);
         out.put("motivo", bloqueada ? lojas.motivo(cnpj) : "");
+        // loja de revendedor: o pagamento é feito pela revenda; o app NÃO mostra a opção de pagar.
+        boolean gerenciadoPorRevenda = cnpj != null &&
+                lojas.obter(cnpj).map(l -> l.getRevendaCodigo() != null).orElse(false);
+        out.put("gerenciadoPorRevenda", gerenciadoPorRevenda);
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
