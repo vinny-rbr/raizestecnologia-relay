@@ -120,6 +120,18 @@ public class LicencaController {
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
+    /** GET /api/licenca/pagamentos — parcelas pagas da loja do cliente logado. */
+    @GetMapping("/licenca/pagamentos")
+    public ResponseEntity<Map<String, Object>> pagamentos(@RequestHeader(value = "X-Empresa", required = false) String empresa) {
+        RelayPrincipal p = CurrentUser.get();
+        String cnpj = empresa == null ? null : empresa.replaceAll("\\D", "");
+        if ((cnpj == null || cnpj.isBlank()) && p != null && p.cnpjs() != null && !p.cnpjs().isEmpty()) {
+            cnpj = p.cnpjs().iterator().next();
+        }
+        if (cnpj == null || cnpj.isBlank()) return ResponseEntity.ok(ApiEnvelope.ok(java.util.List.of()));
+        return ResponseEntity.ok(ApiEnvelope.ok(cobrancas.historico(cnpj)));
+    }
+
     private static LocalDate proximoVenc(LocalDate from, int dia) {
         int d = Math.min(28, Math.max(1, dia));
         LocalDate dt = from.withDayOfMonth(d);

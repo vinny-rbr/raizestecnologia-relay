@@ -52,6 +52,11 @@ public class RevendaService {
     public Optional<Revenda> porId(Long id) { return id == null ? Optional.empty() : repo.findById(id); }
     public Optional<Revenda> porCodigo(String codigo) { return repo.findByCodigo(codigo); }
 
+    @org.springframework.transaction.annotation.Transactional
+    public void definirAsaasCustomer(Long id, String custId) {
+        repo.findById(id).ifPresent(r -> { r.setAsaasCustomerId(custId); repo.save(r); });
+    }
+
     private String gerarCodigo() {
         for (int tent = 0; tent < 20; tent++) {
             StringBuilder sb = new StringBuilder("REV");

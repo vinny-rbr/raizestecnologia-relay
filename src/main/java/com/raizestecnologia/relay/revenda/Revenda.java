@@ -48,7 +48,14 @@ public class Revenda {
     @Column(name = "criado_em")
     private Instant criadoEm = Instant.now();
 
+    /** Id do cliente no Asaas (cus_...) — o revendedor, pagador dos R$30/loja ao dono. */
+    @Column(name = "asaas_customer_id", length = 40)
+    private String asaasCustomerId;
+
     protected Revenda() {}
+
+    public String getAsaasCustomerId() { return asaasCustomerId; }
+    public void setAsaasCustomerId(String v) { this.asaasCustomerId = v; }
 
     public Revenda(String nome, String cpfCnpj, String email, String telefone,
                    String cidade, String uf, String senhaHash, String codigo) {

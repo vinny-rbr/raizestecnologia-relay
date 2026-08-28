@@ -32,11 +32,14 @@ public class CobrancaService {
     private final AsaasClient asaas;
     private final LojaRepository lojas;
     private final CobrancaLoteRepository lotes;
+    private final PagamentoRepository pagamentos;
 
-    public CobrancaService(AsaasClient asaas, LojaRepository lojas, CobrancaLoteRepository lotes) {
+    public CobrancaService(AsaasClient asaas, LojaRepository lojas, CobrancaLoteRepository lotes,
+                           PagamentoRepository pagamentos) {
         this.asaas = asaas;
         this.lojas = lojas;
         this.lotes = lotes;
+        this.pagamentos = pagamentos;
     }
 
     // Diagnóstico do Asaas (só leitura).
@@ -237,11 +240,14 @@ public class CobrancaService {
     /** Marca a IMPLANTAÇÃO como paga (Pix/dinheiro ou Asaas) e libera a loja. */
     @Transactional
     public boolean marcarImplantacaoPaga(String cnpj, boolean manual) {
-        return apply(cnpj, l -> {
+        boolean ok = apply(cnpj, l -> {
             l.setImplantacaoPaga(true);
             l.setImplantacaoPagaEm(Instant.now());
             liberar(l);
         }, manual ? "implantacao_paga_manual" : "implantacao_paga_asaas");
+        lojas.findById(cnpj.replaceAll("\\D", "")).ifPresent(l -> pagamentos.save(new Pagamento(
+                l.getCnpj(), "Implantação", IMPLANTACAO, null, manual ? "manual" : "asaas")));
+        return ok;
     }
 
     // ---- Revenda: o revendedor paga R$30/mês/loja ao dono ----
@@ -268,10 +274,45 @@ public class CobrancaService {
         marcarMensalidadePaga(cnpj, true);
     }
 
+    public record ResultadoRevenda(String linkPagamento, double valor, String vencimento, String custId) {}
+
+    /** Gera UM pagamento (boleto/Pix) somando R$30 × N lojas do revendedor. Ao pagar (webhook),
+     *  cada loja tem o ciclo avançado e é liberada (via CobrancaLote → confirmarLote). */
+    @Transactional
+    public ResultadoRevenda cobrarRevenda(String custId, String nome, String doc, String email,
+                                          java.util.List<String> cnpjs) throws Exception {
+        if (!asaas.enabled()) throw new IllegalStateException("Asaas não configurado (defina ASAAS_API_KEY).");
+        java.util.List<Loja> sel = new java.util.ArrayList<>();
+        for (String raw : cnpjs) {
+            String c = raw == null ? "" : raw.replaceAll("\\D", "");
+            lojas.findById(c).ifPresent(sel::add);
+        }
+        if (sel.isEmpty()) throw new IllegalArgumentException("Selecione ao menos uma loja");
+        double total = round2(REVENDA_MENSALIDADE * sel.size());
+        String desc = "Meu Giro (revenda) - " + sel.size() + " loja(s)";
+        if (custId == null || custId.isBlank()) custId = asaas.criarCliente(nome, doc, email);
+        LocalDate venc = LocalDate.now(BRT).plusDays(3);
+        AsaasClient.Cobranca cob;
+        try {
+            cob = asaas.criarCobranca(custId, total, venc, desc);
+        } catch (AsaasClient.AsaasException e) {
+            custId = asaas.criarCliente(nome, doc, email);
+            cob = asaas.criarCobranca(custId, total, venc, desc);
+        }
+        StringBuilder itens = new StringBuilder();
+        for (Loja l : sel) {
+            if (itens.length() > 0) itens.append(";");
+            itens.append(l.getCnpj()).append(":MENSALIDADE");
+        }
+        lotes.save(new CobrancaLote(cob.id(), itens.toString(), total));
+        log.info("[cobranca] revenda lote {} - {} lojas - R$ {}", cob.id(), sel.size(), total);
+        return new ResultadoRevenda(cob.linkPagamento(), total, venc.toString(), custId);
+    }
+
     /** Marca a MENSALIDADE atual como paga: avança o "pago até" para o próximo dia 5. */
     @Transactional
     public boolean marcarMensalidadePaga(String cnpj, boolean manual) {
-        return apply(cnpj, l -> {
+        boolean ok = apply(cnpj, l -> {
             int dia = l.getDiaVencimento();
             LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
             LocalDate novaAte = l.getMensalidadePagaAte() == null
@@ -280,6 +321,27 @@ public class CobrancaService {
             l.setMensalidadePagaAte(novaAte);
             liberar(l);
         }, manual ? "mensalidade_paga_manual" : "mensalidade_paga_asaas");
+        lojas.findById(cnpj.replaceAll("\\D", "")).ifPresent(l -> pagamentos.save(new Pagamento(
+                l.getCnpj(), "Mensalidade",
+                l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO,
+                l.getMensalidadePagaAte(), manual ? "manual" : "asaas")));
+        return ok;
+    }
+
+    /** Parcelas pagas de uma loja (mais recente primeiro). */
+    public java.util.List<java.util.Map<String, Object>> historico(String cnpj) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Pagamento p : pagamentos.findByCnpjOrderByPagoEmDesc(c)) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("item", p.getItem());
+            m.put("valor", p.getValor());
+            m.put("competencia", p.getCompetencia() == null ? null : p.getCompetencia().toString());
+            m.put("pagoEm", p.getPagoEm() == null ? null : p.getPagoEm().toString());
+            m.put("forma", p.getForma());
+            out.add(m);
+        }
+        return out;
     }
 
     /** Webhook do Asaas confirmou pagamento: dá baixa no item pendente (implantação → mensalidade). */

@@ -152,6 +152,46 @@ public class RevendaController {
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(lojas.findById(l.getCnpj()).orElse(l))));
     }
 
+    /** GET /api/revenda/lojas/{cnpj}/pagamentos — parcelas pagas (histórico) da loja. */
+    @GetMapping("/lojas/{cnpj}/pagamentos")
+    public ResponseEntity<Map<String, Object>> pagamentos(HttpServletRequest req, @PathVariable String cnpj) {
+        Loja l = lojaDoRevendedor(req, cnpj);
+        if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        return ResponseEntity.ok(ApiEnvelope.ok(cobrancas.historico(l.getCnpj())));
+    }
+
+    /** POST /api/revenda/pagar-lote {cnpjs:[...]} — um boleto/Pix só (R$30×N) pro revendedor pagar o dono. */
+    @PostMapping("/pagar-lote")
+    public ResponseEntity<Map<String, Object>> pagarLote(HttpServletRequest req, @RequestBody Map<String, Object> body) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        @SuppressWarnings("unchecked")
+        List<String> pedidos = body != null && body.get("cnpjs") instanceof List ? (List<String>) body.get("cnpjs") : List.of();
+        List<String> cnpjs = new java.util.ArrayList<>();
+        for (String raw : pedidos) {
+            String c = raw == null ? "" : raw.replaceAll("\\D", "");
+            Loja l = lojas.findById(c).orElse(null);
+            if (l != null && r.getCodigo().equals(l.getRevendaCodigo())) cnpjs.add(c);
+        }
+        if (cnpjs.isEmpty()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Selecione ao menos uma loja"));
+        try {
+            var res = cobrancas.cobrarRevenda(r.getAsaasCustomerId(), r.getNome(), r.getCpfCnpj(), r.getEmail(), cnpjs);
+            if (r.getAsaasCustomerId() == null || r.getAsaasCustomerId().isBlank()) {
+                revendas.definirAsaasCustomer(r.getId(), res.custId());
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("linkPagamento", res.linkPagamento() == null ? "" : res.linkPagamento());
+            out.put("valor", res.valor());
+            out.put("vencimento", res.vencimento());
+            out.put("lojas", cnpjs.size());
+            return ResponseEntity.ok(ApiEnvelope.ok(out));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(ApiEnvelope.fail("Falha ao gerar pagamento: " + e.getMessage()));
+        }
+    }
+
     /** Loja pelo cnpj, só se for do revendedor logado; null caso contrário. */
     private Loja lojaDoRevendedor(HttpServletRequest req, String cnpj) {
         Revenda r = autorizar(req);

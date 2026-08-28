@@ -370,6 +370,14 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "grupo", grupo == null ? "" : grupo)));
     }
 
+    /** GET /api/admin/lojas/{cnpj}/pagamentos — parcelas pagas (histórico) da loja. */
+    @GetMapping("/lojas/{cnpj}/pagamentos")
+    public ResponseEntity<Map<String, Object>> pagamentosLoja(@PathVariable String cnpj) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        return ResponseEntity.ok(ApiEnvelope.ok(cobrancas.historico(c)));
+    }
+
     /** POST /api/admin/lojas/{cnpj}/implantacao-vencimento  body: {"data":"YYYY-MM-DD"} (vazio = padrão de 3 dias). */
     @PostMapping("/lojas/{cnpj}/implantacao-vencimento")
     @Transactional
