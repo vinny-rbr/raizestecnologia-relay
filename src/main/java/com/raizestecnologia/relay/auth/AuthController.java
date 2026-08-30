@@ -15,7 +15,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "*")
 public class AuthController {
 
     private final AppUserRepository users;
@@ -23,15 +22,18 @@ public class AuthController {
     private final JwtService jwt;
     private final com.raizestecnologia.relay.audit.AuditoriaService auditoria;
     private final com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens;
+    private final LoginThrottle throttle;
 
     public AuthController(AppUserRepository users, PasswordEncoder encoder, JwtService jwt,
                           com.raizestecnologia.relay.audit.AuditoriaService auditoria,
-                          com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens) {
+                          com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens,
+                          LoginThrottle throttle) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.auditoria = auditoria;
         this.deviceTokens = deviceTokens;
+        this.throttle = throttle;
     }
 
     /** POST /api/auth/login -> {id,name,email,role,store,token}. 401 se invalido/inativo. */
@@ -42,17 +44,23 @@ public class AuthController {
         if (email == null || email.isBlank() || senha == null || senha.isBlank()) {
             return ResponseEntity.status(401).body(ApiEnvelope.fail("Credenciais invalidas"));
         }
+        if (throttle.bloqueado(email)) {
+            return ResponseEntity.status(429).body(ApiEnvelope.fail("Muitas tentativas. Tente de novo em alguns minutos."));
+        }
 
         AppUser user = users.findByEmailIgnoreCase(email.trim()).orElse(null);
         if (user == null) {
+            throttle.falhou(email);
             return ResponseEntity.status(401).body(ApiEnvelope.fail("Usuário não encontrado"));
         }
         if (!user.isAtivo()) {
             return ResponseEntity.status(403).body(ApiEnvelope.fail("Usuário inativo. Fale com o administrador."));
         }
         if (!encoder.matches(senha, user.getSenhaHash())) {
+            throttle.falhou(email);
             return ResponseEntity.status(401).body(ApiEnvelope.fail("Senha inválida"));
         }
+        throttle.ok(email);
 
         String token = jwt.generate(user.getId(), user.getEmail(), user.getRole());
         auditoria.registrar(user.getId(), user.getEmail(), user.getNome(), null, "login", "login efetuado");

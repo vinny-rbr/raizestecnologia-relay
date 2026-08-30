@@ -14,7 +14,6 @@ import java.util.Map;
  * o webhook é público (o Asaas chama /webhooks/asaas quando o pagamento muda de status).
  */
 @RestController
-@CrossOrigin(origins = "*")
 public class CobrancaController {
 
     private static final Logger log = LoggerFactory.getLogger(CobrancaController.class);

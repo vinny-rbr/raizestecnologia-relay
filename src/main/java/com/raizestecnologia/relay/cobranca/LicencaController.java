@@ -21,7 +21,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*")
 public class LicencaController {
 
     private static final ZoneId BRT = ZoneId.of("America/Sao_Paulo");

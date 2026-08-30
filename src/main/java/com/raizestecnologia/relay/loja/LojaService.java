@@ -153,6 +153,9 @@ public class LojaService {
         repo.save(l);
     }
 
+    /** Todas as lojas (1 query) — pra montar telas sem N+1 consultas. */
+    public java.util.List<Loja> todas() { return repo.findAll(); }
+
     /** A loja (entidade) por cnpj, se existir. */
     public java.util.Optional<Loja> obter(String cnpj) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");

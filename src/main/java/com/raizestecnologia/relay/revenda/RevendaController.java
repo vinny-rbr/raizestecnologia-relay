@@ -35,7 +35,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/revenda")
-@CrossOrigin(origins = "*")
 public class RevendaController {
 
     private static final ZoneId BRT = ZoneId.of("America/Sao_Paulo");
@@ -47,10 +46,12 @@ public class RevendaController {
     private final AppUserRepository users;
     private final PasswordEncoder encoder;
     private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
+    private final com.raizestecnologia.relay.auth.LoginThrottle throttle;
 
     public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt,
                              AppUserRepository users, PasswordEncoder encoder,
-                             com.raizestecnologia.relay.cobranca.CobrancaService cobrancas) {
+                             com.raizestecnologia.relay.cobranca.CobrancaService cobrancas,
+                             com.raizestecnologia.relay.auth.LoginThrottle throttle) {
         this.revendas = revendas;
         this.lojas = lojas;
         this.hub = hub;
@@ -58,6 +59,7 @@ public class RevendaController {
         this.users = users;
         this.encoder = encoder;
         this.cobrancas = cobrancas;
+        this.throttle = throttle;
     }
 
     /** POST /api/revenda/cadastro — cadastra um revendedor (CPF/CNPJ + dados) e ja loga. */
@@ -78,16 +80,21 @@ public class RevendaController {
     public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> b) {
         String email = b.get("email");
         String senha = b.get("senha");
+        if (throttle.bloqueado(email)) {
+            return ResponseEntity.status(429).body(ApiEnvelope.fail("Muitas tentativas. Tente de novo em alguns minutos."));
+        }
         // 1) revendedor
         var rev = revendas.autenticar(email, senha);
-        if (rev.isPresent()) return ResponseEntity.ok(ApiEnvelope.ok(sessao(rev.get())));
+        if (rev.isPresent()) { throttle.ok(email); return ResponseEntity.ok(ApiEnvelope.ok(sessao(rev.get()))); }
         // 2) master (mesmo login do celular; so DONO acessa o painel como master)
         if (email != null && senha != null) {
             AppUser u = users.findByEmailIgnoreCase(email.trim()).orElse(null);
             if (u != null && u.isAtivo() && "DONO".equals(u.getRole()) && encoder.matches(senha, u.getSenhaHash())) {
+                throttle.ok(email);
                 return ResponseEntity.ok(ApiEnvelope.ok(masterSessao(u)));
             }
         }
+        throttle.falhou(email);
         return ResponseEntity.status(401).body(ApiEnvelope.fail("E-mail ou senha inválidos"));
     }
 

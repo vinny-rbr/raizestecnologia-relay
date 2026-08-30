@@ -70,7 +70,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of("*"));
+        // Só o painel web (navegador) precisa de CORS; o app nativo não manda Origin.
+        config.setAllowedOriginPatterns(List.of(
+                "https://vinnytecnologia.vercel.app",
+                "https://*.vercel.app",
+                "https://vinnytecnologia.com.br",
+                "https://www.vinnytecnologia.com.br",
+                "http://localhost:*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("*"));

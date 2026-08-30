@@ -191,7 +191,13 @@ public class AdminController {
 
     @GetMapping("/empresas")
     public ResponseEntity<Map<String, Object>> empresas() {
-        Map<String, String> conhecidas = lojas.conhecidas();
+        // 1 query só: carrega todas as lojas e usa a entidade em memória (evita N+1 consultas).
+        java.util.Map<String, com.raizestecnologia.relay.loja.Loja> byId = new java.util.HashMap<>();
+        Map<String, String> conhecidas = new LinkedHashMap<>();
+        for (com.raizestecnologia.relay.loja.Loja l : lojas.todas()) {
+            byId.put(l.getCnpj(), l);
+            conhecidas.put(l.getCnpj(), l.getNome());
+        }
         for (AgentHub.Empresa e : hub.empresas()) {
             conhecidas.putIfAbsent(e.cnpj().replaceAll("\\D", ""), e.nome());
         }
@@ -209,30 +215,30 @@ public class AdminController {
         List<Map<String, Object>> lista = new ArrayList<>();
         for (var en : conhecidas.entrySet()) {
             Map<String, Object> m = new LinkedHashMap<>();
+            com.raizestecnologia.relay.loja.Loja l = byId.get(en.getKey());
             m.put("cnpj", en.getKey());
             m.put("nome", en.getValue());
             m.put("online", hub.online(en.getKey()));
-            m.put("bloqueada", lojas.estaBloqueada(en.getKey()));
-            m.put("motivo", lojas.motivo(en.getKey()));
-            java.time.Instant ativ = lojas.ativadaEm(en.getKey());
-            Double mensStored = lojas.mensalidade(en.getKey());
+            m.put("bloqueada", l != null && l.isBloqueada());
+            m.put("motivo", l == null ? null : l.getMotivoBloqueio());
+            java.time.Instant ativ = l == null ? null : l.getAtivadaEm();
+            Double mensStored = l == null ? null : l.getMensalidade();
             double mens = mensStored != null ? mensStored : MENSALIDADE_PADRAO; // R$30 padrão
             m.put("ativadaEm", ativ == null ? null : ativ.toString());
             m.put("diasUso", diasUso(ativ));
             m.put("mensalidade", mens);
             m.put("implantacao", IMPLANTACAO);
-            m.put("grupo", lojas.grupo(en.getKey()));
-            java.time.LocalDate implVenc = lojas.implantacaoVence(en.getKey());
+            m.put("grupo", l == null ? null : l.getGrupo());
+            java.time.LocalDate implVenc = l == null ? null : l.getImplantacaoVence();
             m.put("implantacaoVence", implVenc == null ? null : implVenc.toString());
             m.put("dispositivos", devCount.getOrDefault(en.getKey(), 0));
             var vs = devVers.get(en.getKey());
             m.put("appVersion", vs == null || vs.isEmpty() ? null : String.join(", ", vs));
-            m.put("diaVencimento", lojas.diaVencimento(en.getKey()));
+            m.put("diaVencimento", l == null ? 5 : l.getDiaVencimento());
             // Estado de cobrança (implantação -> 1ª proporcional -> mensalidade).
-            var lojaOpt = lojas.obter(en.getKey());
-            if (lojaOpt.isPresent()) {
-                var est = cobrancas.estado(lojaOpt.get());
-                m.put("implantacaoPaga", lojaOpt.get().isImplantacaoPaga());
+            if (l != null) {
+                var est = cobrancas.estado(l);
+                m.put("implantacaoPaga", l.isImplantacaoPaga());
                 m.put("fase", est.fase());
                 m.put("itemCobranca", est.item());
                 m.put("valorAtual", est.valor());
