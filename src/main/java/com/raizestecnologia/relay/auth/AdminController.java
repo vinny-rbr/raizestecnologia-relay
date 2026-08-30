@@ -370,6 +370,20 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "grupo", grupo == null ? "" : grupo)));
     }
 
+    /** POST /api/admin/lojas/{cnpj}/revenda {codigo} — vincula a loja a um revendedor (vazio = desvincula). */
+    @PostMapping("/lojas/{cnpj}/revenda")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> vincularRevenda(@PathVariable String cnpj,
+                                                               @RequestBody(required = false) Map<String, String> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String codigo = body == null ? null : body.get("codigo");
+        lojas.vincularRevenda(c, codigo);
+        if (codigo != null && !codigo.isBlank()) cobrancas.ativarRevendaStore(c);
+        registrarAcao(c, "loja_revenda", codigo == null || codigo.isBlank() ? "Desvinculada" : "Revenda " + codigo);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "revenda", codigo == null ? "" : codigo)));
+    }
+
     /** GET /api/admin/lojas/{cnpj}/pagamentos — parcelas pagas (histórico) da loja. */
     @GetMapping("/lojas/{cnpj}/pagamentos")
     public ResponseEntity<Map<String, Object>> pagamentosLoja(@PathVariable String cnpj) {

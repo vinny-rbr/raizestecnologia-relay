@@ -141,6 +141,18 @@ public class LojaService {
         return obter(cnpj).map(Loja::getImplantacaoVence).orElse(null);
     }
 
+    /** Master vincula (ou desvincula, com null/"") uma loja a um revendedor. */
+    @Transactional
+    public void vincularRevenda(String cnpj, String codigo) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        boolean tem = codigo != null && !codigo.isBlank();
+        l.setRevendaCodigo(tem ? codigo.trim().toUpperCase() : null);
+        l.setRevendaAtivada(tem);
+        repo.save(l);
+    }
+
     /** A loja (entidade) por cnpj, se existir. */
     public java.util.Optional<Loja> obter(String cnpj) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
