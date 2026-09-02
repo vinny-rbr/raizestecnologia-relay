@@ -99,23 +99,30 @@ public class LicencaController {
             cnpj = p.cnpjs().iterator().next();
         }
 
-        int diaVenc = cnpj == null ? 5 : lojas.diaVencimento(cnpj);
+        Loja l = cnpj == null ? null : lojas.obter(cnpj).orElse(null);
+        int diaVenc = l == null ? 5 : l.getDiaVencimento();
         LocalDate hoje = LocalDate.now(BRT);
-        LocalDate vencimento = proximoVenc(hoje, diaVenc);
-        long dias = ChronoUnit.DAYS.between(hoje, vencimento);
-        boolean bloqueada = cnpj != null && lojas.estaBloqueada(cnpj);
+        // vencimento REAL da cobrança pendente (pode estar vencido) — igual ao painel.
+        LocalDate vencimento;
+        if (l != null) {
+            try { vencimento = LocalDate.parse(cobrancas.estado(l).vencimento()); }
+            catch (Exception e) { vencimento = proximoVenc(hoje, diaVenc); }
+        } else {
+            vencimento = proximoVenc(hoje, diaVenc);
+        }
+        long dias = ChronoUnit.DAYS.between(hoje, vencimento); // negativo = vencido
+        boolean bloqueada = l != null && l.isBloqueada();
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("diaCobranca", diaVenc);
         out.put("vencimento", vencimento.toString());   // YYYY-MM-DD
         out.put("diasRestantes", (int) dias);
+        out.put("vencido", dias < 0);
         out.put("ativa", !bloqueada);
         out.put("bloqueada", bloqueada);
-        out.put("motivo", bloqueada ? lojas.motivo(cnpj) : "");
+        out.put("motivo", bloqueada ? (l.getMotivoBloqueio() == null ? "" : l.getMotivoBloqueio()) : "");
         // loja de revendedor: o pagamento é feito pela revenda; o app NÃO mostra a opção de pagar.
-        boolean gerenciadoPorRevenda = cnpj != null &&
-                lojas.obter(cnpj).map(l -> l.getRevendaCodigo() != null).orElse(false);
-        out.put("gerenciadoPorRevenda", gerenciadoPorRevenda);
+        out.put("gerenciadoPorRevenda", l != null && l.getRevendaCodigo() != null);
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
