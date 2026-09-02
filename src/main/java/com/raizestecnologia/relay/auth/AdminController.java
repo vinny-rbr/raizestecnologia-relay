@@ -390,6 +390,24 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "revenda", codigo == null ? "" : codigo)));
     }
 
+    /** POST /api/admin/lojas/{cnpj}/pago-ate {data} — corrige o "mensalidade paga até" (vazio = nada pago). */
+    @PostMapping("/lojas/{cnpj}/pago-ate")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirPagoAte(@PathVariable String cnpj,
+                                                              @RequestBody(required = false) Map<String, String> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String data = body == null ? null : body.get("data");
+        try {
+            java.time.LocalDate d = (data == null || data.isBlank()) ? null : java.time.LocalDate.parse(data.trim());
+            lojas.definirMensalidadePagaAte(c, d);
+            registrarAcao(c, "loja_pago_ate", d == null ? "Nada pago" : "Pago até " + d);
+            return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "pagoAte", d == null ? "" : d.toString())));
+        } catch (Exception e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("data invalida (use YYYY-MM-DD)"));
+        }
+    }
+
     /** GET /api/admin/lojas/{cnpj}/pagamentos — parcelas pagas (histórico) da loja. */
     @GetMapping("/lojas/{cnpj}/pagamentos")
     public ResponseEntity<Map<String, Object>> pagamentosLoja(@PathVariable String cnpj) {

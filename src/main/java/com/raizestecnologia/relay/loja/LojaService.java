@@ -156,6 +156,16 @@ public class LojaService {
     /** Todas as lojas (1 query) — pra montar telas sem N+1 consultas. */
     public java.util.List<Loja> todas() { return repo.findAll(); }
 
+    /** Master corrige o "mensalidade paga até" (base do vencido/em dia). null = nada pago. */
+    @Transactional
+    public void definirMensalidadePagaAte(String cnpj, java.time.LocalDate data) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
+        l.setMensalidadePagaAte(data);
+        repo.save(l);
+    }
+
     /** A loja (entidade) por cnpj, se existir. */
     public java.util.Optional<Loja> obter(String cnpj) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
