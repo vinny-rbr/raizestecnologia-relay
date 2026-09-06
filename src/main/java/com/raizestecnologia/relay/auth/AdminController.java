@@ -390,6 +390,13 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "revenda", codigo == null ? "" : codigo)));
     }
 
+    /** POST /api/admin/cobranca/verificar-inadimplentes — roda agora a checagem de bloqueio (5 dias após venc). */
+    @PostMapping("/cobranca/verificar-inadimplentes")
+    public ResponseEntity<Map<String, Object>> verificarInadimplentes() {
+        int n = cobrancas.bloquearInadimplentes();
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("bloqueadas", n)));
+    }
+
     /** POST /api/admin/lojas/{cnpj}/pago-ate {data} — corrige o "mensalidade paga até" (vazio = nada pago). */
     @PostMapping("/lojas/{cnpj}/pago-ate")
     @Transactional
