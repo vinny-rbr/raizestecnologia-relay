@@ -47,11 +47,13 @@ public class RevendaController {
     private final PasswordEncoder encoder;
     private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
     private final com.raizestecnologia.relay.auth.LoginThrottle throttle;
+    private final com.raizestecnologia.relay.notify.NotificationService notifier;
 
     public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt,
                              AppUserRepository users, PasswordEncoder encoder,
                              com.raizestecnologia.relay.cobranca.CobrancaService cobrancas,
-                             com.raizestecnologia.relay.auth.LoginThrottle throttle) {
+                             com.raizestecnologia.relay.auth.LoginThrottle throttle,
+                             com.raizestecnologia.relay.notify.NotificationService notifier) {
         this.revendas = revendas;
         this.lojas = lojas;
         this.hub = hub;
@@ -60,6 +62,7 @@ public class RevendaController {
         this.encoder = encoder;
         this.cobrancas = cobrancas;
         this.throttle = throttle;
+        this.notifier = notifier;
     }
 
     /** POST /api/revenda/cadastro — cadastra um revendedor (CPF/CNPJ + dados) e ja loga. */
@@ -69,6 +72,14 @@ public class RevendaController {
             Revenda r = revendas.cadastrar(
                     b.get("nome"), b.get("cpfCnpj"), b.get("email"), b.get("telefone"),
                     b.get("cidade"), b.get("uf"), b.get("senha"));
+            // Avisa o master (push no celular + email) que entrou um revendedor novo.
+            try {
+                String cidadeUf = (b.getOrDefault("cidade", "") + "/" + b.getOrDefault("uf", "")).trim();
+                notifier.notifyMaster("Nova revenda cadastrada",
+                        b.getOrDefault("nome", "(sem nome)") + " — " + cidadeUf
+                                + " · tel " + b.getOrDefault("telefone", "-")
+                                + " · " + b.getOrDefault("email", "-"));
+            } catch (Exception ignore) { /* notificacao nunca quebra o cadastro */ }
             return ResponseEntity.ok(ApiEnvelope.ok(sessao(r)));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(400).body(ApiEnvelope.fail(e.getMessage()));
