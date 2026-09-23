@@ -5,6 +5,12 @@ import com.raizestecnologia.relay.auth.ApiEnvelope;
 import com.raizestecnologia.relay.auth.AppUser;
 import com.raizestecnologia.relay.auth.AppUserRepository;
 import com.raizestecnologia.relay.auth.JwtService;
+import com.raizestecnologia.relay.auth.Modulos;
+import com.raizestecnologia.relay.auth.UserEmpresa;
+import com.raizestecnologia.relay.auth.UserEmpresaRepository;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
+import java.util.Set;
 import com.raizestecnologia.relay.loja.Loja;
 import com.raizestecnologia.relay.loja.LojaRepository;
 import io.jsonwebtoken.Claims;
@@ -48,12 +54,14 @@ public class RevendaController {
     private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
     private final com.raizestecnologia.relay.auth.LoginThrottle throttle;
     private final com.raizestecnologia.relay.notify.NotificationService notifier;
+    private final UserEmpresaRepository vinculos;
 
     public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt,
                              AppUserRepository users, PasswordEncoder encoder,
                              com.raizestecnologia.relay.cobranca.CobrancaService cobrancas,
                              com.raizestecnologia.relay.auth.LoginThrottle throttle,
-                             com.raizestecnologia.relay.notify.NotificationService notifier) {
+                             com.raizestecnologia.relay.notify.NotificationService notifier,
+                             UserEmpresaRepository vinculos) {
         this.revendas = revendas;
         this.lojas = lojas;
         this.hub = hub;
@@ -63,6 +71,7 @@ public class RevendaController {
         this.cobrancas = cobrancas;
         this.throttle = throttle;
         this.notifier = notifier;
+        this.vinculos = vinculos;
     }
 
     /** POST /api/revenda/cadastro — cadastra um revendedor (CPF/CNPJ + dados) e ja loga. */
@@ -261,6 +270,182 @@ public class RevendaController {
         } catch (Exception e) {
             return ResponseEntity.status(502).build();
         }
+    }
+
+    // ---- Usuarios das lojas do revendedor -------------------------------
+    // O revendedor cria/gerencia os usuarios (OPERADOR) das lojas DELE, definindo
+    // a loja e as permissoes (so estoque / ve tudo / por tela). Nunca toca em DONO
+    // nem em usuario de loja que nao e da revenda dele.
+
+    /** GET /api/revenda/usuarios — usuarios das lojas do revendedor logado. */
+    @GetMapping("/usuarios")
+    public ResponseEntity<Map<String, Object>> usuarios(HttpServletRequest req) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AppUser u : users.findAll()) {
+            List<UserEmpresa> vs = vinculos.findByUserId(u.getId());
+            if ("OPERADOR".equals(u.getRole()) && vs.stream().anyMatch(v -> nomes.containsKey(v.getCnpj()))) {
+                out.add(usuarioJson(u, vs, nomes));
+            }
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** POST /api/revenda/usuarios — cria um OPERADOR numa loja do revendedor. */
+    @PostMapping("/usuarios")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> criarUsuario(HttpServletRequest req, @RequestBody Map<String, Object> b) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        String email = str(b.get("email"));
+        String senha = str(b.get("senha"));
+        if (email.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("E-mail obrigatório"));
+        if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
+        if (users.findByEmailIgnoreCase(email).isPresent())
+            return ResponseEntity.status(409).body(ApiEnvelope.fail("E-mail já cadastrado"));
+        List<String> cnpjs = cnpjsPedidos(b);
+        if (cnpjs.isEmpty()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Escolha a loja do usuário"));
+        for (String c : cnpjs)
+            if (!nomes.containsKey(c)) return ResponseEntity.status(403).body(ApiEnvelope.fail("Loja não é da sua revenda"));
+        AppUser u = new AppUser();
+        u.setNome(str(b.get("nome")));
+        u.setEmail(email);
+        u.setSenhaHash(encoder.encode(senha));
+        u.setRole("OPERADOR");
+        u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
+        u.setAtivo(true);
+        u.setSenhaProvisoria(true); // 1o acesso: o usuario troca a senha
+        for (String c : cnpjs) u.getEmpresas().add(new UserEmpresa(u, c));
+        AppUser saved = users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(saved, vinculos.findByUserId(saved.getId()), nomes)));
+    }
+
+    /** POST /api/revenda/usuarios/{id} — edita nome/ativo/permissoes de um usuario da revenda. */
+    @PostMapping("/usuarios/{id}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> editarUsuario(HttpServletRequest req, @PathVariable Long id,
+                                                             @RequestBody Map<String, Object> b) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        AppUser u = users.findById(id).orElse(null);
+        List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
+        if (u == null || !podeMexer(u, vs, nomes.keySet()))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
+        if (b.containsKey("nome")) u.setNome(str(b.get("nome")));
+        if (b.get("ativo") instanceof Boolean bo) u.setAtivo(bo);
+        if (b.containsKey("permissoes")) u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
+    }
+
+    /** POST /api/revenda/usuarios/{id}/senha — define nova senha (provisoria) de um usuario da revenda. */
+    @PostMapping("/usuarios/{id}/senha")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> senhaUsuario(HttpServletRequest req, @PathVariable Long id,
+                                                            @RequestBody Map<String, Object> b) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        AppUser u = users.findById(id).orElse(null);
+        List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
+        if (u == null || !podeMexer(u, vs, nomes.keySet()))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
+        String senha = str(b.get("senha"));
+        if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
+        u.setSenhaHash(encoder.encode(senha));
+        u.setSenhaProvisoria(true);
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /** DELETE /api/revenda/usuarios/{id} — remove um usuario que é só das lojas da revenda. */
+    @DeleteMapping("/usuarios/{id}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> removerUsuario(HttpServletRequest req, @PathVariable Long id) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Set<String> meus = nomesDasLojas(r).keySet();
+        AppUser u = users.findById(id).orElse(null);
+        List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
+        if (u == null || !podeMexer(u, vs, meus))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
+        // só apaga de vez se TODAS as lojas dele são da revenda (senão afetaria outra revenda/o dono)
+        if (!vs.stream().allMatch(v -> meus.contains(v.getCnpj())))
+            return ResponseEntity.status(409).body(ApiEnvelope.fail("Esse usuário também está em lojas de outra conta; não dá pra excluir por aqui."));
+        users.deleteById(id);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /** Loja(s) do revendedor: cnpj -> nome. */
+    private Map<String, String> nomesDasLojas(Revenda r) {
+        Map<String, String> nomes = new LinkedHashMap<>();
+        for (Loja l : lojas.findByRevendaCodigoOrderByAtualizadoEmDesc(r.getCodigo())) {
+            nomes.put(l.getCnpj(), l.getNome() == null ? "" : l.getNome());
+        }
+        return nomes;
+    }
+
+    /** true se o usuario é OPERADOR e tem ao menos uma loja da revenda (pode ser gerenciado). */
+    private boolean podeMexer(AppUser u, List<UserEmpresa> vs, Set<String> meus) {
+        return "OPERADOR".equals(u.getRole()) && vs.stream().anyMatch(v -> meus.contains(v.getCnpj()));
+    }
+
+    private Map<String, Object> usuarioJson(AppUser u, List<UserEmpresa> vs, Map<String, String> nomes) {
+        List<Map<String, String>> empresas = new ArrayList<>();
+        for (UserEmpresa v : vs) {
+            if (!nomes.containsKey(v.getCnpj())) continue; // só as lojas da revenda
+            Map<String, String> e = new LinkedHashMap<>();
+            e.put("cnpj", v.getCnpj());
+            e.put("nome", nomes.getOrDefault(v.getCnpj(), ""));
+            empresas.add(e);
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", u.getId());
+        m.put("nome", u.getNome());
+        m.put("email", u.getEmail());
+        m.put("ativo", u.isAtivo());
+        m.put("permissoes", u.permissoesList());
+        m.put("empresas", empresas);
+        return m;
+    }
+
+    /** Filtra pros modulos conhecidos e junta em CSV; null/vazio = acesso total (vê tudo). */
+    private static String normalizarPermissoes(List<String> perms) {
+        if (perms == null || perms.isEmpty()) return null;
+        List<String> ok = perms.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(s -> s.trim().toLowerCase())
+                .filter(Modulos.TODOS::contains)
+                .distinct()
+                .toList();
+        return ok.isEmpty() ? null : String.join(",", ok);
+    }
+
+    /** CNPJs pedidos no body: aceita "cnpjs":[...] ou "cnpj":"..." (só dígitos). */
+    private static List<String> cnpjsPedidos(Map<String, Object> b) {
+        List<String> raw = new ArrayList<>();
+        if (b.get("cnpjs") instanceof List<?> l) for (Object o : l) raw.add(String.valueOf(o));
+        if (b.get("cnpj") != null) raw.add(String.valueOf(b.get("cnpj")));
+        List<String> out = new ArrayList<>();
+        for (String s : raw) {
+            String c = s == null ? "" : s.replaceAll("\\D", "");
+            if (!c.isEmpty() && !out.contains(c)) out.add(c);
+        }
+        return out;
+    }
+
+    private static List<String> listaStr(Object o) {
+        List<String> out = new ArrayList<>();
+        if (o instanceof List<?> l) for (Object x : l) if (x != null) out.add(String.valueOf(x));
+        return out;
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o).trim();
     }
 
     // ---- helpers ----
