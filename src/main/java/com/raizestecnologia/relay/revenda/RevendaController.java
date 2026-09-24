@@ -317,6 +317,7 @@ public class RevendaController {
         u.setRole("OPERADOR");
         u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
         u.setAtivo(true);
+        if (b.get("sessaoUnica") instanceof Boolean su) u.setSessaoUnica(su);
         u.setSenhaProvisoria(true); // 1o acesso: o usuario troca a senha
         for (String c : cnpjs) u.getEmpresas().add(new UserEmpresa(u, c));
         AppUser saved = users.save(u);
@@ -337,6 +338,7 @@ public class RevendaController {
             return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
         if (b.containsKey("nome")) u.setNome(str(b.get("nome")));
         if (b.get("ativo") instanceof Boolean bo) u.setAtivo(bo);
+        if (b.get("sessaoUnica") instanceof Boolean su) u.setSessaoUnica(su);
         if (b.containsKey("permissoes")) u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
         users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
@@ -408,6 +410,7 @@ public class RevendaController {
         m.put("nome", u.getNome());
         m.put("email", u.getEmail());
         m.put("ativo", u.isAtivo());
+        m.put("sessaoUnica", u.isSessaoUnica());
         m.put("permissoes", u.permissoesList());
         m.put("empresas", empresas);
         return m;

@@ -62,7 +62,15 @@ public class AuthController {
         }
         throttle.ok(email);
 
-        String token = jwt.generate(user.getId(), user.getEmail(), user.getRole());
+        // Sessao unica: gera um sid novo e salva no usuario -> qualquer token anterior
+        // (de outro aparelho) para de valer no proximo request e aquele celular cai.
+        String sid = null;
+        if (user.isSessaoUnica()) {
+            sid = java.util.UUID.randomUUID().toString();
+            user.setSessaoId(sid);
+            users.save(user);
+        }
+        String token = jwt.generate(user.getId(), user.getEmail(), user.getRole(), sid);
         auditoria.registrar(user.getId(), user.getEmail(), user.getNome(), null, "login", "login efetuado");
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", user.getId());

@@ -46,6 +46,14 @@ public class AppUser {
     @Column(name = "senha_provisoria", nullable = false, columnDefinition = "boolean not null default false")
     private boolean senhaProvisoria = false;
 
+    /** true = sessao unica: logar em outro aparelho desloga o anterior (uma sessao por vez). */
+    @Column(name = "sessao_unica", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean sessaoUnica = false;
+
+    /** id da sessao ativa (quando sessaoUnica): so o token com este sid vale. */
+    @Column(name = "sessao_id", length = 64)
+    private String sessaoId;
+
     @Column(name = "criado_em")
     private Instant criadoEm = Instant.now();
 
@@ -85,6 +93,12 @@ public class AppUser {
 
     public boolean isSenhaProvisoria() { return senhaProvisoria; }
     public void setSenhaProvisoria(boolean senhaProvisoria) { this.senhaProvisoria = senhaProvisoria; }
+
+    public boolean isSessaoUnica() { return sessaoUnica; }
+    public void setSessaoUnica(boolean sessaoUnica) { this.sessaoUnica = sessaoUnica; }
+
+    public String getSessaoId() { return sessaoId; }
+    public void setSessaoId(String sessaoId) { this.sessaoId = sessaoId; }
 
     public Instant getCriadoEm() { return criadoEm; }
     public void setCriadoEm(Instant criadoEm) { this.criadoEm = criadoEm; }

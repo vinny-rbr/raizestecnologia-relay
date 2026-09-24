@@ -44,16 +44,24 @@ public class JwtService {
 
     /** Gera um JWT HS256 com subject = userId e claims email/role. */
     public String generate(Long userId, String email, String role) {
+        return generate(userId, email, role, null);
+    }
+
+    /**
+     * Gera um JWT com um id de sessao ({@code sid}) opcional. Quando o usuario tem
+     * sessao unica, o filtro so aceita o token cujo sid bate com o sessaoId atual.
+     */
+    public String generate(Long userId, String email, String role, String sid) {
         Date now = new Date();
         Date exp = new Date(now.getTime() + EXPIRACAO_MS);
-        return Jwts.builder()
+        var b = Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("email", email)
                 .claim("role", role)
                 .issuedAt(now)
-                .expiration(exp)
-                .signWith(key, Jwts.SIG.HS256)
-                .compact();
+                .expiration(exp);
+        if (sid != null && !sid.isBlank()) b.claim("sid", sid);
+        return b.signWith(key, Jwts.SIG.HS256).compact();
     }
 
     /** Valida a assinatura/expiracao e retorna as claims (lanca excecao se invalido). */

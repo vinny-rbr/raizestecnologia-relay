@@ -45,7 +45,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 Claims claims = jwt.parse(header.substring(7).trim());
                 Long userId = Long.valueOf(claims.getSubject());
                 AppUser user = users.findById(userId).orElse(null);
-                if (user != null && user.isAtivo()) {
+                if (user != null && user.isAtivo() && sessaoValida(user, claims)) {
                     Set<String> cnpjs = vinculos.findByUserId(userId).stream()
                             .map(UserEmpresa::getCnpj)
                             .collect(Collectors.toSet());
@@ -61,5 +61,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Sessao unica: quando ligada, so vale o token cujo sid bate com o sessaoId atual
+     * do usuario. Se logou em outro aparelho (sessaoId mudou) ou o token nao tem sid,
+     * a sessao antiga cai (nao autentica -> 401). Sem sessao unica, passa sempre.
+     */
+    private boolean sessaoValida(AppUser user, Claims claims) {
+        if (!user.isSessaoUnica()) return true;
+        Object sid = claims.get("sid");
+        return sid != null && sid.equals(user.getSessaoId());
     }
 }
