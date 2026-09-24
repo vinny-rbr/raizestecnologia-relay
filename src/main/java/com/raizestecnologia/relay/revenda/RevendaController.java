@@ -264,7 +264,7 @@ public class RevendaController {
             ResponseEntity.BodyBuilder b = ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"instalador-base.zip\"")
-                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600");
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate");
             up.headers().firstValue("content-length").ifPresent(len -> b.header(HttpHeaders.CONTENT_LENGTH, len));
             return b.body(new InputStreamResource(up.body()));
         } catch (Exception e) {
