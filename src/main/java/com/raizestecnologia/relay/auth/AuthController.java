@@ -23,17 +23,45 @@ public class AuthController {
     private final com.raizestecnologia.relay.audit.AuditoriaService auditoria;
     private final com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens;
     private final LoginThrottle throttle;
+    private final UserEmpresaRepository vinculos;
 
     public AuthController(AppUserRepository users, PasswordEncoder encoder, JwtService jwt,
                           com.raizestecnologia.relay.audit.AuditoriaService auditoria,
                           com.raizestecnologia.relay.push.DeviceTokenRepository deviceTokens,
-                          LoginThrottle throttle) {
+                          LoginThrottle throttle, UserEmpresaRepository vinculos) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.auditoria = auditoria;
         this.deviceTokens = deviceTokens;
         this.throttle = throttle;
+        this.vinculos = vinculos;
+    }
+
+    /**
+     * GET /api/auth/usuarios-por-cnpj?cnpj=... — lista os usuarios da loja (CNPJ) para o
+     * cliente escolher e depois digitar a senha. Publico (usado antes do login). Nao expoe
+     * dados sensiveis: so id, nome e e-mail dos usuarios ATIVOS daquela loja.
+     */
+    @GetMapping("/usuarios-por-cnpj")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> usuariosPorCnpj(@RequestParam(required = false) String cnpj) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Informe o CNPJ da loja"));
+        }
+        java.util.List<Map<String, Object>> out = new java.util.ArrayList<>();
+        java.util.Set<Long> vistos = new java.util.HashSet<>();
+        for (UserEmpresa v : vinculos.findByCnpj(c)) {
+            AppUser u = v.getUser();
+            if (u == null || !u.isAtivo() || !vistos.add(u.getId())) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", u.getId());
+            m.put("nome", u.getNome() == null || u.getNome().isBlank() ? u.getEmail() : u.getNome());
+            m.put("email", u.getEmail());
+            out.add(m);
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
     /** POST /api/auth/login -> {id,name,email,role,store,token}. 401 se invalido/inativo. */

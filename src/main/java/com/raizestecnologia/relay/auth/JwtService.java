@@ -52,6 +52,15 @@ public class JwtService {
      * sessao unica, o filtro so aceita o token cujo sid bate com o sessaoId atual.
      */
     public String generate(Long userId, String email, String role, String sid) {
+        return generate(userId, email, role, sid, null);
+    }
+
+    /**
+     * Como acima, mas com claims extras (ex.: {@code revId} = id da revenda a que um
+     * usuario-master pertence). Valores null sao ignorados.
+     */
+    public String generate(Long userId, String email, String role, String sid,
+                           java.util.Map<String, Object> extra) {
         Date now = new Date();
         Date exp = new Date(now.getTime() + EXPIRACAO_MS);
         var b = Jwts.builder()
@@ -61,6 +70,8 @@ public class JwtService {
                 .issuedAt(now)
                 .expiration(exp);
         if (sid != null && !sid.isBlank()) b.claim("sid", sid);
+        if (extra != null) for (var e : extra.entrySet())
+            if (e.getValue() != null) b.claim(e.getKey(), e.getValue());
         return b.signWith(key, Jwts.SIG.HS256).compact();
     }
 

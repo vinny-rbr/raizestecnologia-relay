@@ -103,15 +103,24 @@ public class RevendaController {
         if (throttle.bloqueado(email)) {
             return ResponseEntity.status(429).body(ApiEnvelope.fail("Muitas tentativas. Tente de novo em alguns minutos."));
         }
-        // 1) revendedor
+        // 1) revendedor (conta principal da revenda)
         var rev = revendas.autenticar(email, senha);
         if (rev.isPresent()) { throttle.ok(email); return ResponseEntity.ok(ApiEnvelope.ok(sessao(rev.get()))); }
-        // 2) master (mesmo login do celular; so DONO acessa o painel como master)
+        // 2) usuario da conta (master DONO -> ve tudo; usuario-master de revenda -> ve so a revenda dele)
         if (email != null && senha != null) {
             AppUser u = users.findByEmailIgnoreCase(email.trim()).orElse(null);
-            if (u != null && u.isAtivo() && "DONO".equals(u.getRole()) && encoder.matches(senha, u.getSenhaHash())) {
-                throttle.ok(email);
-                return ResponseEntity.ok(ApiEnvelope.ok(masterSessao(u)));
+            if (u != null && u.isAtivo() && encoder.matches(senha, u.getSenhaHash())) {
+                if ("DONO".equals(u.getRole())) {
+                    throttle.ok(email);
+                    return ResponseEntity.ok(ApiEnvelope.ok(masterSessao(u)));
+                }
+                if ("REVENDA".equals(u.getRole()) && u.getRevendaId() != null) {
+                    Revenda r = revendas.porId(u.getRevendaId()).filter(Revenda::isAtivo).orElse(null);
+                    if (r != null) {
+                        throttle.ok(email);
+                        return ResponseEntity.ok(ApiEnvelope.ok(sessaoRevendaUser(u, r)));
+                    }
+                }
             }
         }
         throttle.falhou(email);
@@ -423,6 +432,102 @@ public class RevendaController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
     }
 
+    // ---- Usuarios-master da revenda -------------------------------------
+    // Logins extras do painel da revenda (role REVENDA + revendaId). Cada um enxerga
+    // SO os clientes desta revenda; quem ve todas as revendas e apenas o DONO (master do dono).
+
+    /** GET /api/revenda/masters — os usuarios-master desta revenda. */
+    @GetMapping("/masters")
+    public ResponseEntity<Map<String, Object>> masters(HttpServletRequest req) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AppUser u : users.findByRevendaId(r.getId())) out.add(masterJson(u));
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** POST /api/revenda/masters — cria um usuario-master desta revenda. */
+    @PostMapping("/masters")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> criarMaster(HttpServletRequest req, @RequestBody Map<String, Object> b) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        String email = str(b.get("email"));
+        String senha = str(b.get("senha"));
+        if (email.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("E-mail obrigatório"));
+        if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
+        if (users.findByEmailIgnoreCase(email).isPresent())
+            return ResponseEntity.status(409).body(ApiEnvelope.fail("E-mail já cadastrado"));
+        AppUser u = new AppUser();
+        u.setNome(str(b.get("nome")));
+        u.setEmail(email);
+        u.setSenhaHash(encoder.encode(senha));
+        u.setRole("REVENDA");
+        u.setRevendaId(r.getId());
+        u.setAtivo(true);
+        AppUser saved = users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(masterJson(saved)));
+    }
+
+    /** POST /api/revenda/masters/{id} — edita nome/ativo de um usuario-master desta revenda. */
+    @PostMapping("/masters/{id}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> editarMaster(HttpServletRequest req, @PathVariable Long id,
+                                                            @RequestBody Map<String, Object> b) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        AppUser u = masterDaRevenda(id, r);
+        if (u == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado nesta revenda"));
+        if (b.containsKey("nome")) u.setNome(str(b.get("nome")));
+        if (b.get("ativo") instanceof Boolean bo) u.setAtivo(bo);
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(masterJson(u)));
+    }
+
+    /** POST /api/revenda/masters/{id}/senha — troca a senha de um usuario-master desta revenda. */
+    @PostMapping("/masters/{id}/senha")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> senhaMaster(HttpServletRequest req, @PathVariable Long id,
+                                                           @RequestBody Map<String, Object> b) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        AppUser u = masterDaRevenda(id, r);
+        if (u == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado nesta revenda"));
+        String senha = str(b.get("senha"));
+        if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
+        u.setSenhaHash(encoder.encode(senha));
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /** DELETE /api/revenda/masters/{id} — remove um usuario-master desta revenda. */
+    @DeleteMapping("/masters/{id}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> removerMaster(HttpServletRequest req, @PathVariable Long id) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        AppUser u = masterDaRevenda(id, r);
+        if (u == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado nesta revenda"));
+        users.deleteById(id);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /** Usuario-master pelo id, so se pertence a esta revenda; null caso contrario. */
+    private AppUser masterDaRevenda(Long id, Revenda r) {
+        AppUser u = id == null ? null : users.findById(id).orElse(null);
+        if (u == null || !"REVENDA".equals(u.getRole())) return null;
+        return r.getId().equals(u.getRevendaId()) ? u : null;
+    }
+
+    private Map<String, Object> masterJson(AppUser u) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", u.getId());
+        m.put("nome", u.getNome());
+        m.put("email", u.getEmail());
+        m.put("ativo", u.isAtivo());
+        return m;
+    }
+
     /** Loja(s) do revendedor: cnpj -> nome. */
     private Map<String, String> nomesDasLojas(Revenda r) {
         Map<String, String> nomes = new LinkedHashMap<>();
@@ -505,7 +610,22 @@ public class RevendaController {
         m.put("nome", r.getNome());
         m.put("email", r.getEmail());
         m.put("codigo", r.getCodigo());
-        m.put("token", jwt.generate(r.getId(), r.getEmail(), "REVENDA"));
+        m.put("token", jwt.generate(r.getId(), r.getEmail(), "REVENDA", null,
+                Map.of("revId", r.getId())));
+        return m;
+    }
+
+    /** Sessao de um usuario-master da revenda: token REVENDA com revId apontando pra revenda dele. */
+    private Map<String, Object> sessaoRevendaUser(AppUser u, Revenda r) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tipo", "revenda");
+        m.put("id", u.getId());
+        m.put("nome", u.getNome() == null || u.getNome().isBlank() ? r.getNome() : u.getNome());
+        m.put("email", u.getEmail());
+        m.put("codigo", r.getCodigo());
+        // subject = id do AppUser; revId = id da revenda (o autorizar resolve a revenda por ele).
+        m.put("token", jwt.generate(u.getId(), u.getEmail(), "REVENDA", null,
+                Map.of("revId", r.getId())));
         return m;
     }
 
@@ -528,7 +648,13 @@ public class RevendaController {
         try {
             Claims c = jwt.parse(h.substring(7).trim());
             if (!"REVENDA".equals(String.valueOf(c.get("role")))) return null;
-            return revendas.porId(Long.valueOf(c.getSubject())).filter(Revenda::isAtivo).orElse(null);
+            // revId (usuarios-master e contas novas) manda; subject e fallback pros tokens antigos.
+            Long revId = null;
+            Object rv = c.get("revId");
+            if (rv != null) { try { revId = Long.valueOf(String.valueOf(rv)); } catch (Exception ignore) {} }
+            if (revId == null) { try { revId = Long.valueOf(c.getSubject()); } catch (Exception ignore) {} }
+            if (revId == null) return null;
+            return revendas.porId(revId).filter(Revenda::isAtivo).orElse(null);
         } catch (Exception e) {
             return null;
         }

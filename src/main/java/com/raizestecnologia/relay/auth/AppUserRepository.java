@@ -10,4 +10,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     /** Usuarios MASTER/DONO ativos — destinatarios dos alertas do sistema. */
     List<AppUser> findByRoleIgnoreCaseAndAtivoTrue(String role);
+
+    /** Usuarios-master de uma revenda (logins extras do painel da revenda). */
+    List<AppUser> findByRevendaId(Long revendaId);
 }

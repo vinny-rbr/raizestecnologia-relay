@@ -6,6 +6,7 @@ import java.util.List;
 
 public interface UserEmpresaRepository extends JpaRepository<UserEmpresa, Long> {
     List<UserEmpresa> findByUserId(Long userId);
+    List<UserEmpresa> findByCnpj(String cnpj);
     boolean existsByUserIdAndCnpj(Long userId, String cnpj);
     void deleteByUserIdAndCnpj(Long userId, String cnpj);
 }

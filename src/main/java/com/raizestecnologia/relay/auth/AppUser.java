@@ -24,6 +24,13 @@ public class AppUser {
     @Column(name = "email", unique = true, nullable = false)
     private String email;
 
+    /**
+     * Quando role=REVENDA e este e um usuario-master de uma revenda, o id da revenda
+     * a que ele pertence. Ve so os clientes daquela revenda. null = revenda principal / nao-revenda.
+     */
+    @Column(name = "revenda_id")
+    private Long revendaId;
+
     @Column(name = "senha_hash", nullable = false)
     private String senhaHash;
 
@@ -86,6 +93,9 @@ public class AppUser {
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+
+    public Long getRevendaId() { return revendaId; }
+    public void setRevendaId(Long revendaId) { this.revendaId = revendaId; }
 
     public String getSenhaHash() { return senhaHash; }
     public void setSenhaHash(String senhaHash) { this.senhaHash = senhaHash; }

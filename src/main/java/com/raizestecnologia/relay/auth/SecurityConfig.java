@@ -44,7 +44,7 @@ public class SecurityConfig {
                         .accessDeniedHandler((req, res, e) -> writeJson(res, 403, "Acesso negado")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/health", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/health", "/api/auth/login", "/api/auth/usuarios-por-cnpj").permitAll()
                         .requestMatchers("/agent", "/agent/**").permitAll()
                         // Revenda tem token proprio (role REVENDA); a autorizacao e feita no RevendaController.
                         .requestMatchers("/api/revenda/**").permitAll()
