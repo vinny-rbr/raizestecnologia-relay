@@ -3,7 +3,8 @@ package com.raizestecnologia.relay.auth.dto;
 /**
  * Body de POST /api/auth/login. Aceita "password" e tambem "senha".
  */
-public record LoginRequest(String email, String password, String senha) {
+public record LoginRequest(String email, String password, String senha,
+                           String deviceId, String deviceNome) {
 
     /** Senha efetiva: prioriza "password", cai para "senha". */
     public String senhaEfetiva() {

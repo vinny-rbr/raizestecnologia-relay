@@ -54,6 +54,22 @@ public class AppUser {
     @Column(name = "sessao_id", length = 64)
     private String sessaoId;
 
+    /** true = trava por aparelho: so o aparelho autorizado loga; novo aparelho precisa liberacao. */
+    @Column(name = "device_lock", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean deviceLock = false;
+
+    /** aparelho autorizado (id gerado pelo app) + nome amigavel (modelo). */
+    @Column(name = "device_atual", length = 80)
+    private String deviceAtual;
+    @Column(name = "device_atual_nome", length = 120)
+    private String deviceAtualNome;
+
+    /** aparelho novo que tentou logar e aguarda liberacao no painel. */
+    @Column(name = "device_pendente", length = 80)
+    private String devicePendente;
+    @Column(name = "device_pendente_nome", length = 120)
+    private String devicePendenteNome;
+
     @Column(name = "criado_em")
     private Instant criadoEm = Instant.now();
 
@@ -99,6 +115,21 @@ public class AppUser {
 
     public String getSessaoId() { return sessaoId; }
     public void setSessaoId(String sessaoId) { this.sessaoId = sessaoId; }
+
+    public boolean isDeviceLock() { return deviceLock; }
+    public void setDeviceLock(boolean deviceLock) { this.deviceLock = deviceLock; }
+
+    public String getDeviceAtual() { return deviceAtual; }
+    public void setDeviceAtual(String deviceAtual) { this.deviceAtual = deviceAtual; }
+
+    public String getDeviceAtualNome() { return deviceAtualNome; }
+    public void setDeviceAtualNome(String deviceAtualNome) { this.deviceAtualNome = deviceAtualNome; }
+
+    public String getDevicePendente() { return devicePendente; }
+    public void setDevicePendente(String devicePendente) { this.devicePendente = devicePendente; }
+
+    public String getDevicePendenteNome() { return devicePendenteNome; }
+    public void setDevicePendenteNome(String devicePendenteNome) { this.devicePendenteNome = devicePendenteNome; }
 
     public Instant getCriadoEm() { return criadoEm; }
     public void setCriadoEm(Instant criadoEm) { this.criadoEm = criadoEm; }

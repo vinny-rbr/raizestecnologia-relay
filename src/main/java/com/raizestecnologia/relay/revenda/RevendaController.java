@@ -339,6 +339,7 @@ public class RevendaController {
         if (b.containsKey("nome")) u.setNome(str(b.get("nome")));
         if (b.get("ativo") instanceof Boolean bo) u.setAtivo(bo);
         if (b.get("sessaoUnica") instanceof Boolean su) u.setSessaoUnica(su);
+        if (b.get("deviceLock") instanceof Boolean dl) u.setDeviceLock(dl);
         if (b.containsKey("permissoes")) u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
         users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
@@ -362,6 +363,46 @@ public class RevendaController {
         u.setSenhaProvisoria(true);
         users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /** POST /api/revenda/usuarios/{id}/liberar-aparelho — autoriza o aparelho novo (pendente). */
+    @PostMapping("/usuarios/{id}/liberar-aparelho")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> liberarAparelho(HttpServletRequest req, @PathVariable Long id) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        AppUser u = users.findById(id).orElse(null);
+        List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
+        if (u == null || !podeMexer(u, vs, nomes.keySet()))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
+        if (u.getDevicePendente() == null || u.getDevicePendente().isBlank())
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Não há aparelho novo aguardando."));
+        u.setDeviceAtual(u.getDevicePendente());
+        u.setDeviceAtualNome(u.getDevicePendenteNome());
+        u.setDevicePendente(null);
+        u.setDevicePendenteNome(null);
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
+    }
+
+    /** POST /api/revenda/usuarios/{id}/resetar-aparelho — zera o aparelho (proximo login re-vincula). */
+    @PostMapping("/usuarios/{id}/resetar-aparelho")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> resetarAparelho(HttpServletRequest req, @PathVariable Long id) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        AppUser u = users.findById(id).orElse(null);
+        List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
+        if (u == null || !podeMexer(u, vs, nomes.keySet()))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
+        u.setDeviceAtual(null);
+        u.setDeviceAtualNome(null);
+        u.setDevicePendente(null);
+        u.setDevicePendenteNome(null);
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
     }
 
     /** DELETE /api/revenda/usuarios/{id} — remove um usuario que é só das lojas da revenda. */
@@ -411,6 +452,10 @@ public class RevendaController {
         m.put("email", u.getEmail());
         m.put("ativo", u.isAtivo());
         m.put("sessaoUnica", u.isSessaoUnica());
+        m.put("deviceLock", u.isDeviceLock());
+        m.put("deviceAtualNome", u.getDeviceAtualNome() == null ? "" : u.getDeviceAtualNome());
+        m.put("devicePendenteNome", u.getDevicePendenteNome() == null ? "" : u.getDevicePendenteNome());
+        m.put("devicePendente", u.getDevicePendente() != null && !u.getDevicePendente().isBlank());
         m.put("permissoes", u.permissoesList());
         m.put("empresas", empresas);
         return m;

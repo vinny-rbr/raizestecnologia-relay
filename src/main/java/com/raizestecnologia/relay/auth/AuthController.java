@@ -62,6 +62,31 @@ public class AuthController {
         }
         throttle.ok(email);
 
+        // Trava por aparelho: so o aparelho autorizado loga. 1o aparelho vincula sozinho;
+        // aparelho diferente vira "pendente" e e bloqueado ate o revendedor liberar no painel.
+        if (user.isDeviceLock()) {
+            String dev = req.deviceId() == null ? "" : req.deviceId().trim();
+            String devNome = req.deviceNome() == null ? "" : req.deviceNome().trim();
+            if (dev.isEmpty()) {
+                return ResponseEntity.status(403).body(ApiEnvelope.fail(
+                        "Atualize o aplicativo para continuar (identificação do aparelho)."));
+            }
+            String atual = user.getDeviceAtual();
+            if (atual == null || atual.isBlank()) {
+                user.setDeviceAtual(dev);
+                user.setDeviceAtualNome(devNome);
+                user.setDevicePendente(null);
+                user.setDevicePendenteNome(null);
+                users.save(user);
+            } else if (!atual.equals(dev)) {
+                user.setDevicePendente(dev);
+                user.setDevicePendenteNome(devNome);
+                users.save(user);
+                return ResponseEntity.status(403).body(ApiEnvelope.fail(
+                        "Este aparelho não está autorizado. Peça ao seu fornecedor para liberar este celular."));
+            }
+        }
+
         // Sessao unica: gera um sid novo e salva no usuario -> qualquer token anterior
         // (de outro aparelho) para de valer no proximo request e aquele celular cai.
         String sid = null;
