@@ -34,6 +34,23 @@ public class CatalogoController {
         return ResponseEntity.ok(ApiEnvelope.ok(json(c)));
     }
 
+    /** GET /api/admin/catalogo?q=&limit= (DONO) — pesquisa o catalogo por nome/barras + total. */
+    @GetMapping("/api/admin/catalogo")
+    public ResponseEntity<Map<String, Object>> buscar(@RequestParam(required = false) String q,
+                                                      @RequestParam(required = false) Integer limit) {
+        int lim = limit == null ? 50 : Math.min(Math.max(limit, 1), 200);
+        List<Map<String, Object>> itens = new ArrayList<>();
+        String termo = q == null ? "" : q.trim();
+        if (!termo.isBlank()) {
+            var page = org.springframework.data.domain.PageRequest.of(0, lim);
+            for (CatalogoProduto c : repo.buscar(termo, page)) itens.add(json(c));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("total", repo.count());
+        out.put("itens", itens);
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
     /** Carga em lote: {itens:[{barras,nome,ncm,cest,unidade,marca}, ...]}. Faz upsert por barras. */
     @PostMapping("/api/admin/catalogo/import")
     public ResponseEntity<Map<String, Object>> importar(@RequestBody Map<String, Object> body) {
