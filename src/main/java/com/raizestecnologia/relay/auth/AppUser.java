@@ -81,6 +81,14 @@ public class AppUser {
     @Column(name = "device_pendente_nome", length = 120)
     private String devicePendenteNome;
 
+    // "Esqueci a senha": hash do codigo de 6 digitos mandado por e-mail, validade e tentativas.
+    @Column(name = "reset_codigo_hash", length = 100)
+    private String resetCodigoHash;
+    @Column(name = "reset_expira")
+    private Instant resetExpira;
+    @Column(name = "reset_tentativas", nullable = false, columnDefinition = "integer not null default 0")
+    private int resetTentativas = 0;
+
     @Column(name = "criado_em")
     private Instant criadoEm = Instant.now();
 
@@ -126,6 +134,13 @@ public class AppUser {
 
     public boolean isSessaoUnica() { return sessaoUnica; }
     public void setSessaoUnica(boolean sessaoUnica) { this.sessaoUnica = sessaoUnica; }
+
+    public String getResetCodigoHash() { return resetCodigoHash; }
+    public void setResetCodigoHash(String resetCodigoHash) { this.resetCodigoHash = resetCodigoHash; }
+    public Instant getResetExpira() { return resetExpira; }
+    public void setResetExpira(Instant resetExpira) { this.resetExpira = resetExpira; }
+    public int getResetTentativas() { return resetTentativas; }
+    public void setResetTentativas(int resetTentativas) { this.resetTentativas = resetTentativas; }
 
     public boolean isConsultaPreco() { return consultaPreco; }
     public void setConsultaPreco(boolean consultaPreco) { this.consultaPreco = consultaPreco; }
