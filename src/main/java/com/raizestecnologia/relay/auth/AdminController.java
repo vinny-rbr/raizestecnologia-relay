@@ -423,17 +423,32 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
-    /** POST /api/admin/revendas/{id}/masters {nome,email,senha} — cria um master dessa revenda. */
+    /**
+     * POST /api/admin/revendas/{id}/masters {nome,email,senha,vincular} — cria um master dessa revenda.
+     * Se o e-mail ja existir: sem "vincular" devolve 409; com "vincular"=true transforma o usuario
+     * existente em master desta revenda (role REVENDA + revenda_id); a senha em branco mantem a atual.
+     */
     @PostMapping("/revendas/{id}/masters")
     @Transactional
     public ResponseEntity<Map<String, Object>> criarRevendaMaster(@PathVariable Long id, @RequestBody Map<String, Object> b) {
         if (revendas.porId(id).isEmpty()) return ResponseEntity.status(404).body(ApiEnvelope.fail("Revenda não encontrada"));
         String email = str(b.get("email"));
-        String senha = str(b.get("senha"));
         if (email.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("E-mail obrigatório"));
+        String senha = str(b.get("senha"));
+        boolean vincular = Boolean.parseBoolean(String.valueOf(b.get("vincular")));
+        var existente = users.findByEmailIgnoreCase(email);
+        if (existente.isPresent()) {
+            if (!vincular) return ResponseEntity.status(409).body(ApiEnvelope.fail("E-mail já cadastrado"));
+            AppUser u = existente.get();
+            u.setRole("REVENDA");
+            u.setRevendaId(id);
+            u.setAtivo(true);
+            if (!str(b.get("nome")).isBlank()) u.setNome(str(b.get("nome")));
+            if (!senha.isBlank()) u.setSenhaHash(encoder.encode(senha));
+            users.save(u);
+            return ResponseEntity.ok(ApiEnvelope.ok(masterJson(u)));
+        }
         if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
-        if (users.findByEmailIgnoreCase(email).isPresent())
-            return ResponseEntity.status(409).body(ApiEnvelope.fail("E-mail já cadastrado"));
         AppUser u = new AppUser();
         u.setNome(str(b.get("nome")));
         u.setEmail(email.trim());
