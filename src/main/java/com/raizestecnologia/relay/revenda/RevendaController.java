@@ -1,5 +1,7 @@
 package com.raizestecnologia.relay.revenda;
 
+import com.raizestecnologia.relay.auth.SenhaResetController;
+
 import com.raizestecnologia.relay.AgentHub;
 import com.raizestecnologia.relay.auth.ApiEnvelope;
 import com.raizestecnologia.relay.auth.AppUser;
@@ -431,6 +433,50 @@ public class RevendaController {
         if (!vs.stream().allMatch(v -> meus.contains(v.getCnpj())))
             return ResponseEntity.status(409).body(ApiEnvelope.fail("Esse usuário também está em lojas de outra conta; não dá pra excluir por aqui."));
         users.deleteById(id);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    // ---- Solicitacoes (pedidos de troca de senha feitos no app) -------------
+    // O usuario escolhe a senha nova no "Esqueci a senha" do app; a revenda aprova aqui.
+
+    /** true se a revenda pode decidir o pedido: operador das lojas dela ou master dela. */
+    private boolean daRevenda(AppUser u, Revenda r, Set<String> meus) {
+        if ("REVENDA".equals(u.getRole())) return r.getId().equals(u.getRevendaId());
+        return podeMexer(u, vinculos.findByUserId(u.getId()), meus);
+    }
+
+    /** GET /api/revenda/solicitacoes — pedidos de senha pendentes dos usuarios da revenda. */
+    @GetMapping("/solicitacoes")
+    public ResponseEntity<Map<String, Object>> solicitacoes(HttpServletRequest req) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Map<String, String> nomes = nomesDasLojas(r);
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AppUser u : users.findAll()) {
+            if (!SenhaResetController.temPedido(u) || !daRevenda(u, r, nomes.keySet())) continue;
+            List<String> ls = new ArrayList<>();
+            for (UserEmpresa v : vinculos.findByUserId(u.getId()))
+                if (nomes.containsKey(v.getCnpj())) ls.add(nomes.get(v.getCnpj()));
+            out.add(SenhaResetController.json(u, ls));
+        }
+        out.sort((a, b) -> String.valueOf(b.get("pedidoEm")).compareTo(String.valueOf(a.get("pedidoEm"))));
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** POST /api/revenda/solicitacoes/{id}/aprovar|recusar */
+    @PostMapping("/solicitacoes/{id}/{acao}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> decidirSolicitacao(HttpServletRequest req, @PathVariable Long id,
+                                                                  @PathVariable String acao) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        AppUser u = users.findById(id).orElse(null);
+        if (u == null || !SenhaResetController.temPedido(u) || !daRevenda(u, r, nomesDasLojas(r).keySet()))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Solicitação não encontrada"));
+        if ("aprovar".equals(acao)) SenhaResetController.aprovar(u);
+        else if ("recusar".equals(acao)) SenhaResetController.recusar(u);
+        else return ResponseEntity.status(400).body(ApiEnvelope.fail("Ação inválida"));
+        users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
     }
 

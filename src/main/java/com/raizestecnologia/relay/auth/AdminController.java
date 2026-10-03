@@ -192,6 +192,35 @@ public class AdminController {
 
     // ---- Empresas disponiveis (lojas conectadas) ------------------------
 
+    // ---- Solicitacoes de troca de senha (DONO ve todas) ----
+
+    @GetMapping("/solicitacoes")
+    public ResponseEntity<Map<String, Object>> solicitacoes() {
+        Map<String, String> nomes = nomesPorCnpj();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AppUser u : users.findAll()) {
+            if (!SenhaResetController.temPedido(u)) continue;
+            List<String> ls = new ArrayList<>();
+            for (UserEmpresa v : vinculos.findByUserId(u.getId())) ls.add(nomes.getOrDefault(v.getCnpj(), v.getCnpj()));
+            out.add(SenhaResetController.json(u, ls));
+        }
+        out.sort((a, b) -> String.valueOf(b.get("pedidoEm")).compareTo(String.valueOf(a.get("pedidoEm"))));
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    @PostMapping("/solicitacoes/{id}/{acao}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> decidirSolicitacao(@PathVariable Long id, @PathVariable String acao) {
+        AppUser u = users.findById(id).orElse(null);
+        if (u == null || !SenhaResetController.temPedido(u))
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Solicitação não encontrada"));
+        if ("aprovar".equals(acao)) SenhaResetController.aprovar(u);
+        else if ("recusar".equals(acao)) SenhaResetController.recusar(u);
+        else return ResponseEntity.status(400).body(ApiEnvelope.fail("Ação inválida"));
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
     @GetMapping("/empresas")
     public ResponseEntity<Map<String, Object>> empresas() {
         // 1 query só: carrega todas as lojas e usa a entidade em memória (evita N+1 consultas).
