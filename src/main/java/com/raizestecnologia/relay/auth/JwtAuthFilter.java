@@ -27,10 +27,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtService jwt;
     private final AppUserRepository users;
     private final UserEmpresaRepository vinculos;
-    private final com.raizestecnologia.relay.revenda.RevendaService revendas;
+    // Repository (nao o Service) para evitar ciclo: Service -> PasswordEncoder (SecurityConfig) -> JwtAuthFilter.
+    private final com.raizestecnologia.relay.revenda.RevendaRepository revendas;
 
     public JwtAuthFilter(JwtService jwt, AppUserRepository users, UserEmpresaRepository vinculos,
-                         com.raizestecnologia.relay.revenda.RevendaService revendas) {
+                         com.raizestecnologia.relay.revenda.RevendaRepository revendas) {
         this.jwt = jwt;
         this.users = users;
         this.vinculos = vinculos;
@@ -56,7 +57,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     // Master de revenda: carrega o codigo da revenda pra enxergar as lojas dela.
                     String revendaCodigo = null;
                     if ("REVENDA".equalsIgnoreCase(user.getRole()) && user.getRevendaId() != null) {
-                        revendaCodigo = revendas.porId(user.getRevendaId())
+                        revendaCodigo = revendas.findById(user.getRevendaId())
                                 .map(com.raizestecnologia.relay.revenda.Revenda::getCodigo).orElse(null);
                     }
                     RelayPrincipal principal = new RelayPrincipal(
