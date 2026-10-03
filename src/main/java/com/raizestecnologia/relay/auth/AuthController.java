@@ -58,7 +58,8 @@ public class AuthController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", u.getId());
             m.put("nome", u.getNome() == null || u.getNome().isBlank() ? u.getEmail() : u.getNome());
-            m.put("email", u.getEmail());
+            m.put("email", u.getEmailReal());
+            m.put("login", u.getLogin() == null ? "" : u.getLogin());
             out.add(m);
         }
         return ResponseEntity.ok(ApiEnvelope.ok(out));
@@ -76,7 +77,7 @@ public class AuthController {
             return ResponseEntity.status(429).body(ApiEnvelope.fail("Muitas tentativas. Tente de novo em alguns minutos."));
         }
 
-        AppUser user = users.findByEmailIgnoreCase(email.trim()).orElse(null);
+        AppUser user = users.porEmailOuLogin(email).orElse(null);
         if (user == null) {
             throttle.falhou(email);
             return ResponseEntity.status(401).body(ApiEnvelope.fail("Usuário não encontrado"));

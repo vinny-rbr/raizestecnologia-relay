@@ -313,10 +313,15 @@ public class RevendaController {
         Map<String, String> nomes = nomesDasLojas(r);
         String email = str(b.get("email"));
         String senha = str(b.get("senha"));
-        if (email.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("E-mail obrigatório"));
+        String login = AppUser.normalizarLogin(str(b.get("login")));
+        if (email.isBlank() && login == null)
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Informe o e-mail ou o usuário"));
         if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
-        if (users.findByEmailIgnoreCase(email).isPresent())
+        if (!email.isBlank() && users.findByEmailIgnoreCase(email).isPresent())
             return ResponseEntity.status(409).body(ApiEnvelope.fail("E-mail já cadastrado"));
+        String erroLogin = validarLogin(login, null);
+        if (erroLogin != null) return ResponseEntity.status(409).body(ApiEnvelope.fail(erroLogin));
+        if (email.isBlank()) email = login.replaceAll("[^a-z0-9]+", ".") + "." + System.currentTimeMillis() + AppUser.EMAIL_INTERNO;
         List<String> cnpjs = cnpjsPedidos(b);
         if (cnpjs.isEmpty()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Escolha a loja do usuário"));
         for (String c : cnpjs)
@@ -324,6 +329,7 @@ public class RevendaController {
         AppUser u = new AppUser();
         u.setNome(str(b.get("nome")));
         u.setEmail(email);
+        u.setLogin(login);
         u.setSenhaHash(encoder.encode(senha));
         u.setRole("OPERADOR");
         u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
@@ -349,6 +355,14 @@ public class RevendaController {
         if (u == null || !podeMexer(u, vs, nomes.keySet()))
             return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado na sua revenda"));
         if (b.containsKey("nome")) u.setNome(str(b.get("nome")));
+        if (b.containsKey("login")) {
+            String login = AppUser.normalizarLogin(str(b.get("login")));
+            if (login == null && u.getEmailReal().isBlank())
+                return ResponseEntity.status(400).body(ApiEnvelope.fail("Esse usuário não tem e-mail; o nome de usuário é obrigatório"));
+            String erroLogin = validarLogin(login, u.getId());
+            if (erroLogin != null) return ResponseEntity.status(409).body(ApiEnvelope.fail(erroLogin));
+            u.setLogin(login);
+        }
         if (b.get("ativo") instanceof Boolean bo) u.setAtivo(bo);
         if (b.get("sessaoUnica") instanceof Boolean su) u.setSessaoUnica(su);
         if (b.get("consultaPreco") instanceof Boolean cp) u.setConsultaPreco(cp);
@@ -585,6 +599,18 @@ public class RevendaController {
         return nomes;
     }
 
+    /** null se o nome de usuario pode ser usado; senao a mensagem de erro. [meuId] = o proprio (edicao). */
+    private String validarLogin(String login, Long meuId) {
+        if (login == null) return null;
+        if (login.contains("@")) return "O nome de usuário não pode ter @";
+        if (login.length() < 3) return "O nome de usuário precisa de ao menos 3 letras";
+        var outro = users.findByLogin(login);
+        if (outro.isPresent() && !outro.get().getId().equals(meuId)) return "Esse nome de usuário já existe. Escolha outro.";
+        var porEmail = users.findByEmailIgnoreCase(login);
+        if (porEmail.isPresent() && !porEmail.get().getId().equals(meuId)) return "Esse nome de usuário já existe. Escolha outro.";
+        return null;
+    }
+
     /** true se o usuario é OPERADOR e tem ao menos uma loja da revenda (pode ser gerenciado). */
     private boolean podeMexer(AppUser u, List<UserEmpresa> vs, Set<String> meus) {
         return "OPERADOR".equals(u.getRole()) && vs.stream().anyMatch(v -> meus.contains(v.getCnpj()));
@@ -602,7 +628,8 @@ public class RevendaController {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", u.getId());
         m.put("nome", u.getNome());
-        m.put("email", u.getEmail());
+        m.put("email", u.getEmailReal());
+        m.put("login", u.getLogin() == null ? "" : u.getLogin());
         m.put("ativo", u.isAtivo());
         m.put("sessaoUnica", u.isSessaoUnica());
         m.put("consultaPreco", u.isConsultaPreco());

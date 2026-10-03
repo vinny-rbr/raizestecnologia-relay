@@ -24,6 +24,11 @@ public class AppUser {
     @Column(name = "email", unique = true, nullable = false)
     private String email;
 
+    // Nome de usuario pra entrar no app (alternativa ao e-mail), ex. "preco bentevi".
+    // Unico, guardado em minusculas. Quem so tem usuario ganha um e-mail interno (EMAIL_INTERNO).
+    @Column(name = "login", unique = true, length = 80)
+    private String login;
+
     /**
      * Quando role=REVENDA e este e um usuario-master de uma revenda, o id da revenda
      * a que ele pertence. Ve so os clientes daquela revenda. null = revenda principal / nao-revenda.
@@ -104,6 +109,28 @@ public class AppUser {
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+
+    /** Sufixo do e-mail gerado pra quem entra so pelo nome de usuario (nao e e-mail real). */
+    public static final String EMAIL_INTERNO = "@usuario.meugiro";
+
+    public String getLogin() { return login; }
+    public void setLogin(String login) { this.login = normalizarLogin(login); }
+
+    /** E-mail real (vazio se for o interno gerado pro usuario sem e-mail). */
+    public String getEmailReal() {
+        return email == null || email.endsWith(EMAIL_INTERNO) ? "" : email;
+    }
+
+    /** Como a pessoa entra: o usuario se tiver, senao o e-mail. */
+    public String getAcesso() {
+        return login != null && !login.isBlank() ? login : getEmailReal();
+    }
+
+    public static String normalizarLogin(String s) {
+        if (s == null) return null;
+        String t = s.trim().toLowerCase().replaceAll("\\s+", " ");
+        return t.isEmpty() ? null : t;
+    }
 
     public Long getRevendaId() { return revendaId; }
     public void setRevendaId(Long revendaId) { this.revendaId = revendaId; }

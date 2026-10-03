@@ -36,7 +36,7 @@ public class SenhaResetController {
         String email = b == null || b.get("email") == null ? "" : b.get("email").trim();
         String senha = b == null || b.get("senha") == null ? "" : b.get("senha").trim();
         if (email.isBlank()) {
-            return ResponseEntity.status(400).body(ApiEnvelope.fail("Informe o e-mail"));
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Informe o e-mail ou usuário"));
         }
         if (senha.length() < 4) {
             return ResponseEntity.status(400).body(ApiEnvelope.fail("A senha precisa de ao menos 4 caracteres"));
@@ -47,7 +47,7 @@ public class SenhaResetController {
         }
         throttle.falhou(chave); // conta cada pedido (no maximo 6 a cada 15 min)
 
-        AppUser u = users.findByEmailIgnoreCase(email).orElse(null);
+        AppUser u = users.porEmailOuLogin(email).orElse(null);
         if (u == null) {
             return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado"));
         }
@@ -84,7 +84,7 @@ public class SenhaResetController {
         m.put("id", u.getId());
         m.put("tipo", "senha");
         m.put("nome", u.getNome() == null ? "" : u.getNome());
-        m.put("email", u.getEmail());
+        m.put("email", u.getAcesso());
         m.put("lojas", lojas);
         m.put("pedidoEm", u.getSenhaPendenteEm() == null ? null : u.getSenhaPendenteEm().toString());
         return m;
