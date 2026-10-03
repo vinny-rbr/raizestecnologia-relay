@@ -327,6 +327,7 @@ public class RevendaController {
         u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
         u.setAtivo(true);
         if (b.get("sessaoUnica") instanceof Boolean su) u.setSessaoUnica(su);
+        if (b.get("consultaPreco") instanceof Boolean cp) u.setConsultaPreco(cp);
         u.setSenhaProvisoria(true); // 1o acesso: o usuario troca a senha
         for (String c : cnpjs) u.getEmpresas().add(new UserEmpresa(u, c));
         AppUser saved = users.save(u);
@@ -348,6 +349,7 @@ public class RevendaController {
         if (b.containsKey("nome")) u.setNome(str(b.get("nome")));
         if (b.get("ativo") instanceof Boolean bo) u.setAtivo(bo);
         if (b.get("sessaoUnica") instanceof Boolean su) u.setSessaoUnica(su);
+        if (b.get("consultaPreco") instanceof Boolean cp) u.setConsultaPreco(cp);
         if (b.get("deviceLock") instanceof Boolean dl) u.setDeviceLock(dl);
         if (b.containsKey("permissoes")) u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
         users.save(u);
@@ -557,6 +559,7 @@ public class RevendaController {
         m.put("email", u.getEmail());
         m.put("ativo", u.isAtivo());
         m.put("sessaoUnica", u.isSessaoUnica());
+        m.put("consultaPreco", u.isConsultaPreco());
         m.put("deviceLock", u.isDeviceLock());
         m.put("deviceAtualNome", u.getDeviceAtualNome() == null ? "" : u.getDeviceAtualNome());
         m.put("devicePendenteNome", u.getDevicePendenteNome() == null ? "" : u.getDevicePendenteNome());

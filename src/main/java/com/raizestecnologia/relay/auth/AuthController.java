@@ -133,6 +133,7 @@ public class AuthController {
         data.put("store", "");
         data.put("permissoes", user.permissoesList());
         data.put("senhaProvisoria", user.isSenhaProvisoria());
+        data.put("consultaPreco", user.isConsultaPreco());
         data.put("token", token);
         return ResponseEntity.ok(ApiEnvelope.ok(data));
     }

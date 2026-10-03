@@ -57,6 +57,10 @@ public class AppUser {
     @Column(name = "sessao_unica", nullable = false, columnDefinition = "boolean not null default false")
     private boolean sessaoUnica = false;
 
+    /** true = usuario SO de consulta de preco: ao logar, o app abre direto na camera (scanner). */
+    @Column(name = "consulta_preco", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean consultaPreco = false;
+
     /** id da sessao ativa (quando sessaoUnica): so o token com este sid vale. */
     @Column(name = "sessao_id", length = 64)
     private String sessaoId;
@@ -122,6 +126,9 @@ public class AppUser {
 
     public boolean isSessaoUnica() { return sessaoUnica; }
     public void setSessaoUnica(boolean sessaoUnica) { this.sessaoUnica = sessaoUnica; }
+
+    public boolean isConsultaPreco() { return consultaPreco; }
+    public void setConsultaPreco(boolean consultaPreco) { this.consultaPreco = consultaPreco; }
 
     public String getSessaoId() { return sessaoId; }
     public void setSessaoId(String sessaoId) { this.sessaoId = sessaoId; }
