@@ -32,13 +32,15 @@ public class AdminController {
     private final com.raizestecnologia.relay.loja.LojaService lojas;
     private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
     private final com.raizestecnologia.relay.push.DeviceTokenRepository devices;
+    private final com.raizestecnologia.relay.revenda.RevendaService revendas;
 
     public AdminController(AppUserRepository users, UserEmpresaRepository vinculos,
                            PasswordEncoder encoder, AgentHub hub,
                            com.raizestecnologia.relay.audit.AuditoriaRepository auditoria,
                            com.raizestecnologia.relay.loja.LojaService lojas,
                            com.raizestecnologia.relay.cobranca.CobrancaService cobrancas,
-                           com.raizestecnologia.relay.push.DeviceTokenRepository devices) {
+                           com.raizestecnologia.relay.push.DeviceTokenRepository devices,
+                           com.raizestecnologia.relay.revenda.RevendaService revendas) {
         this.users = users;
         this.vinculos = vinculos;
         this.encoder = encoder;
@@ -47,6 +49,7 @@ public class AdminController {
         this.lojas = lojas;
         this.cobrancas = cobrancas;
         this.devices = devices;
+        this.revendas = revendas;
     }
 
     // ---- Auditoria (DONO) ------------------------------------------------
@@ -388,6 +391,106 @@ public class AdminController {
         if (codigo != null && !codigo.isBlank()) cobrancas.ativarRevendaStore(c);
         registrarAcao(c, "loja_revenda", codigo == null || codigo.isBlank() ? "Desvinculada" : "Revenda " + codigo);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "revenda", codigo == null ? "" : codigo)));
+    }
+
+    // ---- Revendas e seus usuarios-master (DONO) --------------------------
+    // O DONO pode listar as revendas e criar/gerir os logins-master de cada uma
+    // (role REVENDA + revenda_id): esses usuarios veem SO os clientes daquela revenda.
+
+    /** GET /api/admin/revendas — todas as revendas (para o painel do DONO escolher). */
+    @GetMapping("/revendas")
+    public ResponseEntity<Map<String, Object>> listarRevendas() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (var r : revendas.listarTodas()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", r.getId());
+            m.put("nome", r.getNome());
+            m.put("cpfCnpj", r.getCpfCnpj());
+            m.put("codigo", r.getCodigo());
+            m.put("ativo", r.isAtivo());
+            m.put("qtdMasters", users.findByRevendaId(r.getId()).size());
+            out.add(m);
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** GET /api/admin/revendas/{id}/masters — os usuarios-master de uma revenda. */
+    @GetMapping("/revendas/{id}/masters")
+    public ResponseEntity<Map<String, Object>> revendaMasters(@PathVariable Long id) {
+        if (revendas.porId(id).isEmpty()) return ResponseEntity.status(404).body(ApiEnvelope.fail("Revenda não encontrada"));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AppUser u : users.findByRevendaId(id)) out.add(masterJson(u));
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** POST /api/admin/revendas/{id}/masters {nome,email,senha} — cria um master dessa revenda. */
+    @PostMapping("/revendas/{id}/masters")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> criarRevendaMaster(@PathVariable Long id, @RequestBody Map<String, Object> b) {
+        if (revendas.porId(id).isEmpty()) return ResponseEntity.status(404).body(ApiEnvelope.fail("Revenda não encontrada"));
+        String email = str(b.get("email"));
+        String senha = str(b.get("senha"));
+        if (email.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("E-mail obrigatório"));
+        if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
+        if (users.findByEmailIgnoreCase(email).isPresent())
+            return ResponseEntity.status(409).body(ApiEnvelope.fail("E-mail já cadastrado"));
+        AppUser u = new AppUser();
+        u.setNome(str(b.get("nome")));
+        u.setEmail(email.trim());
+        u.setSenhaHash(encoder.encode(senha));
+        u.setRole("REVENDA");
+        u.setRevendaId(id);
+        u.setAtivo(true);
+        AppUser saved = users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(masterJson(saved)));
+    }
+
+    /** POST /api/admin/revendas/{id}/masters/{uid} — edita nome/ativo de um master da revenda. */
+    @PostMapping("/revendas/{id}/masters/{uid}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> editarRevendaMaster(@PathVariable Long id, @PathVariable Long uid,
+                                                                   @RequestBody Map<String, Object> b) {
+        AppUser u = users.findById(uid).orElse(null);
+        if (u == null || !id.equals(u.getRevendaId())) return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado"));
+        if (b.get("nome") != null) u.setNome(str(b.get("nome")));
+        if (b.get("ativo") != null) u.setAtivo(Boolean.parseBoolean(String.valueOf(b.get("ativo"))));
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(masterJson(u)));
+    }
+
+    /** POST /api/admin/revendas/{id}/masters/{uid}/senha {senha} — redefine a senha. */
+    @PostMapping("/revendas/{id}/masters/{uid}/senha")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> senhaRevendaMaster(@PathVariable Long id, @PathVariable Long uid,
+                                                                  @RequestBody Map<String, Object> b) {
+        AppUser u = users.findById(uid).orElse(null);
+        if (u == null || !id.equals(u.getRevendaId())) return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado"));
+        String senha = str(b.get("senha"));
+        if (senha.isBlank()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Senha obrigatória"));
+        u.setSenhaHash(encoder.encode(senha));
+        users.save(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(masterJson(u)));
+    }
+
+    /** DELETE /api/admin/revendas/{id}/masters/{uid} — remove um master da revenda. */
+    @DeleteMapping("/revendas/{id}/masters/{uid}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> excluirRevendaMaster(@PathVariable Long id, @PathVariable Long uid) {
+        AppUser u = users.findById(uid).orElse(null);
+        if (u == null || !id.equals(u.getRevendaId())) return ResponseEntity.status(404).body(ApiEnvelope.fail("Usuário não encontrado"));
+        users.delete(u);
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("id", uid)));
+    }
+
+    private static String str(Object o) { return o == null ? "" : String.valueOf(o).trim(); }
+
+    private Map<String, Object> masterJson(AppUser u) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", u.getId());
+        m.put("nome", u.getNome());
+        m.put("email", u.getEmail());
+        m.put("ativo", u.isAtivo());
+        return m;
     }
 
     /** POST /api/admin/cobranca/verificar-inadimplentes — roda agora a checagem de bloqueio (5 dias após venc). */

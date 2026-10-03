@@ -52,6 +52,11 @@ public class RevendaService {
     public Optional<Revenda> porId(Long id) { return id == null ? Optional.empty() : repo.findById(id); }
     public Optional<Revenda> porCodigo(String codigo) { return repo.findByCodigo(codigo); }
 
+    /** Todas as revendas (ordenadas por nome) — usada pelo painel do DONO. */
+    public java.util.List<Revenda> listarTodas() {
+        return repo.findAll(org.springframework.data.domain.Sort.by("nome"));
+    }
+
     @org.springframework.transaction.annotation.Transactional
     public void definirAsaasCustomer(Long id, String custId) {
         repo.findById(id).ifPresent(r -> { r.setAsaasCustomerId(custId); repo.save(r); });
