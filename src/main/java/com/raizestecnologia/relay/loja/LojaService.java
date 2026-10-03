@@ -156,11 +156,15 @@ public class LojaService {
     /** Todas as lojas (1 query) — pra montar telas sem N+1 consultas. */
     public java.util.List<Loja> todas() { return repo.findAll(); }
 
-    /** CNPJs das lojas de uma revenda (pelo codigo do instalador). Master de revenda ve essas lojas. */
+    /**
+     * CNPJs das lojas de uma revenda (pelo codigo do instalador). Master de revenda ve essas lojas.
+     * Usa o codigo COMO VEM (igual ao painel /api/revenda/lojas) para casar com o revenda_codigo
+     * gravado nas lojas; nao transforma o case.
+     */
     public java.util.Set<String> cnpjsDaRevenda(String codigo) {
         if (codigo == null || codigo.isBlank()) return java.util.Set.of();
         java.util.Set<String> out = new java.util.HashSet<>();
-        for (Loja l : repo.findByRevendaCodigoOrderByAtualizadoEmDesc(codigo.trim().toUpperCase())) out.add(l.getCnpj());
+        for (Loja l : repo.findByRevendaCodigoOrderByAtualizadoEmDesc(codigo)) out.add(l.getCnpj());
         return out;
     }
 
