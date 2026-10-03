@@ -45,6 +45,7 @@ public class RelayController {
     public Map<String, Object> empresas() {
         RelayPrincipal principal = CurrentUser.get();
         boolean dono = principal != null && "DONO".equalsIgnoreCase(principal.role());
+        java.util.Set<String> visiveis = dono ? null : cnpjsVisiveis(principal);
 
         // Todas as lojas ja conhecidas pelo servidor (inclui as offline)...
         java.util.Map<String, String> conhecidas = lojas.conhecidas();
@@ -54,7 +55,7 @@ public class RelayController {
         List<Map<String, Object>> lista = new java.util.ArrayList<>();
         for (var en : conhecidas.entrySet()) {
             String cnpj = en.getKey();
-            if (!dono && (principal == null || !principal.cnpjs().contains(cnpj))) continue;
+            if (!dono && !visiveis.contains(cnpj)) continue;
             Map<String, Object> m = new java.util.LinkedHashMap<>();
             m.put("cnpj", cnpj);
             m.put("nome", en.getValue());
@@ -65,6 +66,17 @@ public class RelayController {
             lista.add(m);
         }
         return env(lista);
+    }
+
+    /**
+     * CNPJs que o usuario pode ver: os vinculos diretos (user_empresa) +, se for master de revenda,
+     * todas as lojas daquela revenda (por revendaCodigo). DONO nao passa por aqui (ve tudo).
+     */
+    private java.util.Set<String> cnpjsVisiveis(RelayPrincipal p) {
+        if (p == null) return java.util.Set.of();
+        java.util.Set<String> out = new java.util.HashSet<>(p.cnpjs() == null ? java.util.Set.of() : p.cnpjs());
+        if (p.isRevenda()) out.addAll(lojas.cnpjsDaRevenda(p.revendaCodigo()));
+        return out;
     }
 
     /** Tudo o mais e repassado para o agente da loja (por CNPJ no cabecalho X-Empresa). */
@@ -89,7 +101,7 @@ public class RelayController {
         RelayPrincipal principal = CurrentUser.get();
         if (principal != null && !"DONO".equalsIgnoreCase(principal.role())) {
             String cnpjDigits = onlyDigits(empresa);
-            if (!principal.cnpjs().contains(cnpjDigits)) {
+            if (!cnpjsVisiveis(principal).contains(cnpjDigits)) {
                 return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta empresa\"}");
             }
             // Loja suspensa por pendencia de pagamento: bloqueia os usuarios dela

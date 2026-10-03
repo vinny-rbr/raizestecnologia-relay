@@ -6,10 +6,16 @@ import java.util.Set;
  * Identidade do usuario autenticado no SecurityContext.
  * Os cnpjs e as permissoes vem do banco (nao confie apenas no token).
  */
-public record RelayPrincipal(String userId, String email, String role, Set<String> cnpjs, Set<String> permissoes) {
+public record RelayPrincipal(String userId, String email, String role, Set<String> cnpjs, Set<String> permissoes,
+                             String revendaCodigo) {
 
     public boolean isDono() {
         return "DONO".equalsIgnoreCase(role);
+    }
+
+    /** Master de revenda: ve as lojas da revenda (por revendaCodigo), nao so os vinculos. */
+    public boolean isRevenda() {
+        return "REVENDA".equalsIgnoreCase(role) && revendaCodigo != null && !revendaCodigo.isBlank();
     }
 
     public boolean podeVer(String cnpj) {

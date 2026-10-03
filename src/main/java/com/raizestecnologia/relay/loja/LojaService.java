@@ -156,6 +156,14 @@ public class LojaService {
     /** Todas as lojas (1 query) — pra montar telas sem N+1 consultas. */
     public java.util.List<Loja> todas() { return repo.findAll(); }
 
+    /** CNPJs das lojas de uma revenda (pelo codigo do instalador). Master de revenda ve essas lojas. */
+    public java.util.Set<String> cnpjsDaRevenda(String codigo) {
+        if (codigo == null || codigo.isBlank()) return java.util.Set.of();
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (Loja l : repo.findByRevendaCodigoOrderByAtualizadoEmDesc(codigo.trim().toUpperCase())) out.add(l.getCnpj());
+        return out;
+    }
+
     /** Master corrige o "mensalidade paga até" (base do vencido/em dia). null = nada pago. */
     @Transactional
     public void definirMensalidadePagaAte(String cnpj, java.time.LocalDate data) {

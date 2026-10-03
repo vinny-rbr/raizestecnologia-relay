@@ -27,11 +27,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtService jwt;
     private final AppUserRepository users;
     private final UserEmpresaRepository vinculos;
+    private final com.raizestecnologia.relay.revenda.RevendaService revendas;
 
-    public JwtAuthFilter(JwtService jwt, AppUserRepository users, UserEmpresaRepository vinculos) {
+    public JwtAuthFilter(JwtService jwt, AppUserRepository users, UserEmpresaRepository vinculos,
+                         com.raizestecnologia.relay.revenda.RevendaService revendas) {
         this.jwt = jwt;
         this.users = users;
         this.vinculos = vinculos;
+        this.revendas = revendas;
     }
 
     @Override
@@ -50,8 +53,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                             .map(UserEmpresa::getCnpj)
                             .collect(Collectors.toSet());
                     Set<String> permissoes = new java.util.HashSet<>(user.permissoesList());
+                    // Master de revenda: carrega o codigo da revenda pra enxergar as lojas dela.
+                    String revendaCodigo = null;
+                    if ("REVENDA".equalsIgnoreCase(user.getRole()) && user.getRevendaId() != null) {
+                        revendaCodigo = revendas.porId(user.getRevendaId())
+                                .map(com.raizestecnologia.relay.revenda.Revenda::getCodigo).orElse(null);
+                    }
                     RelayPrincipal principal = new RelayPrincipal(
-                            String.valueOf(user.getId()), user.getEmail(), user.getRole(), cnpjs, permissoes);
+                            String.valueOf(user.getId()), user.getEmail(), user.getRole(), cnpjs, permissoes, revendaCodigo);
                     var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole()));
                     var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authentication);
