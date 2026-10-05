@@ -184,7 +184,7 @@ public class LojaService {
         Loja l = repo.findById(c).orElseGet(() -> new Loja(c, ""));
         boolean tem = codigo != null && !codigo.isBlank();
         l.setRevendaCodigo(tem ? codigo.trim().toUpperCase() : null);
-        l.setRevendaAtivada(tem);
+        l.setRevendaAtivada(false); // a revenda ativa no painel dela (Ativar)
         // master decidiu o dono: qualquer pedido pendente/recusa anterior deixa de valer
         l.setRevendaPendente(null);
         l.setRevendaPendenteEm(null);

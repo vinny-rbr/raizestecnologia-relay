@@ -424,7 +424,6 @@ public class AdminController {
         if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
         String codigo = body == null ? null : body.get("codigo");
         lojas.vincularRevenda(c, codigo);
-        if (codigo != null && !codigo.isBlank()) cobrancas.ativarRevendaStore(c);
         registrarAcao(c, "loja_revenda", codigo == null || codigo.isBlank() ? "Desvinculada" : "Revenda " + codigo);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "revenda", codigo == null ? "" : codigo)));
     }
@@ -463,7 +462,6 @@ public class AdminController {
         String de = loja.getRevendaCodigo(), para = loja.getRevendaPendente();
         if ("aprovar".equals(acao)) {
             lojas.vincularRevenda(c, para);
-            cobrancas.ativarRevendaStore(c);
             registrarAcao(c, "loja_revenda", "Transferida de " + de + " para " + para);
         } else if ("recusar".equals(acao)) {
             lojas.recusarTransferencia(c);
