@@ -506,9 +506,23 @@ public class AdminController {
     /** GET /api/admin/revendas — todas as revendas (para o painel do DONO escolher). */
     @GetMapping("/revendas")
     public ResponseEntity<Map<String, Object>> listarRevendas() {
+        // clientes (lojas) de cada revenda, numa query so
+        Map<String, List<Map<String, Object>>> clientes = new java.util.HashMap<>();
+        for (var l : lojas.todas()) {
+            if (l.getRevendaCodigo() == null) continue;
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("cnpj", l.getCnpj());
+            c.put("nome", l.getNome());
+            c.put("online", hub.online(l.getCnpj()));
+            c.put("bloqueada", l.isBloqueada());
+            clientes.computeIfAbsent(l.getRevendaCodigo().toUpperCase(), k -> new ArrayList<>()).add(c);
+        }
         List<Map<String, Object>> out = new ArrayList<>();
         for (var r : revendas.listarTodas()) {
             Map<String, Object> m = new LinkedHashMap<>();
+            var cl = r.getCodigo() == null ? List.<Map<String, Object>>of() : clientes.getOrDefault(r.getCodigo().toUpperCase(), List.of());
+            m.put("qtdClientes", cl.size());
+            m.put("clientes", cl);
             m.put("id", r.getId());
             m.put("nome", r.getNome());
             m.put("cpfCnpj", r.getCpfCnpj());
