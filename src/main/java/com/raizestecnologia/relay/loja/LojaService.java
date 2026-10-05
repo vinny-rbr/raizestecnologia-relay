@@ -22,9 +22,11 @@ public class LojaService {
     private static final Logger log = LoggerFactory.getLogger(LojaService.class);
 
     private final LojaRepository repo;
+    private final com.raizestecnologia.relay.notify.NotificationService notifier;
 
-    public LojaService(LojaRepository repo) {
+    public LojaService(LojaRepository repo, com.raizestecnologia.relay.notify.NotificationService notifier) {
         this.repo = repo;
+        this.notifier = notifier;
     }
 
     @EventListener
@@ -36,15 +38,48 @@ public class LojaService {
             Loja l = repo.findById(cnpj).orElseGet(() -> new Loja(cnpj, ev.nome()));
             if (ev.nome() != null && !ev.nome().isBlank()) l.setNome(ev.nome());
             // Vincula a revenda na 1a vez que a loja aparece com um codigo (fica com quem instalou).
-            if (l.getRevendaCodigo() == null && ev.revenda() != null && !ev.revenda().isBlank()) {
-                l.setRevendaCodigo(ev.revenda());
+            String nova = ev.revenda() == null || ev.revenda().isBlank() ? null : ev.revenda().trim().toUpperCase();
+            boolean pedidoNovo = false;
+            if (l.getRevendaCodigo() == null && nova != null) {
+                l.setRevendaCodigo(nova);
+            } else if (nova != null && !nova.equalsIgnoreCase(l.getRevendaCodigo())
+                    && !nova.equalsIgnoreCase(l.getRevendaPendente())
+                    && !nova.equalsIgnoreCase(l.getRevendaRecusada())) {
+                // Outra revenda instalou numa loja que ja tem dona: nao troca sozinho, pede pro master.
+                l.setRevendaPendente(nova);
+                l.setRevendaPendenteEm(Instant.now());
+                pedidoNovo = true;
             }
             l.setAtualizadoEm(Instant.now());
             if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now()); // 1a ativacao (base da cobranca)
             repo.save(l);
+            if (pedidoNovo) {
+                notifier.notifyMaster("Revenda querendo pegar loja de outra revenda",
+                        "A revenda " + nova + " instalou o agente na loja " + l.getNome() + " (" + cnpj
+                                + "), que hoje é da revenda " + l.getRevendaCodigo()
+                                + ". Autorize ou recuse no painel (aba Transferências).");
+            }
         } catch (Exception e) {
             log.warn("[loja] falha ao registrar loja {}: {}", cnpj, e.getMessage());
         }
+    }
+
+    /** Lojas com pedido de transferencia de revenda aguardando o master. */
+    public java.util.List<Loja> transferenciasPendentes() {
+        java.util.List<Loja> out = new java.util.ArrayList<>();
+        for (Loja l : repo.findAll()) if (l.getRevendaPendente() != null) out.add(l);
+        return out;
+    }
+
+    /** Master recusa o pedido: guarda o codigo recusado pra nao pedir de novo a cada reconexao. */
+    @Transactional
+    public void recusarTransferencia(String cnpj) {
+        repo.findById(cnpj).ifPresent(l -> {
+            l.setRevendaRecusada(l.getRevendaPendente());
+            l.setRevendaPendente(null);
+            l.setRevendaPendenteEm(null);
+            repo.save(l);
+        });
     }
 
     /**
@@ -150,6 +185,10 @@ public class LojaService {
         boolean tem = codigo != null && !codigo.isBlank();
         l.setRevendaCodigo(tem ? codigo.trim().toUpperCase() : null);
         l.setRevendaAtivada(tem);
+        // master decidiu o dono: qualquer pedido pendente/recusa anterior deixa de valer
+        l.setRevendaPendente(null);
+        l.setRevendaPendenteEm(null);
+        l.setRevendaRecusada(null);
         repo.save(l);
     }
 

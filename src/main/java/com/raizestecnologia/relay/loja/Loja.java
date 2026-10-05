@@ -30,6 +30,20 @@ public class Loja {
     @Column(name = "revenda_ativada", nullable = false, columnDefinition = "boolean not null default false")
     private boolean revendaAtivada = false;
 
+    /**
+     * Outra revenda instalou o agente numa loja que ja e de uma revenda: o codigo dela fica aqui
+     * aguardando o master autorizar (ou recusar) a transferencia. null = nenhum pedido.
+     */
+    @Column(name = "revenda_pendente", length = 20)
+    private String revendaPendente;
+
+    @Column(name = "revenda_pendente_em")
+    private Instant revendaPendenteEm;
+
+    /** Codigo que o master recusou pra esta loja (nao gera pedido de novo a cada reconexao do agente). */
+    @Column(name = "revenda_recusada", length = 20)
+    private String revendaRecusada;
+
     /** Grupo/pasta pra organizar lojas (ex.: um cliente com varias lojas). Rotulo livre. null = sem grupo. */
     @Column(name = "grupo", length = 80)
     private String grupo;
@@ -92,6 +106,12 @@ public class Loja {
     public void setNome(String nome) { this.nome = nome; }
     public String getRevendaCodigo() { return revendaCodigo; }
     public void setRevendaCodigo(String c) { this.revendaCodigo = c; }
+    public String getRevendaPendente() { return revendaPendente; }
+    public void setRevendaPendente(String c) { this.revendaPendente = c; }
+    public Instant getRevendaPendenteEm() { return revendaPendenteEm; }
+    public void setRevendaPendenteEm(Instant t) { this.revendaPendenteEm = t; }
+    public String getRevendaRecusada() { return revendaRecusada; }
+    public void setRevendaRecusada(String c) { this.revendaRecusada = c; }
     public boolean isRevendaAtivada() { return revendaAtivada; }
     public void setRevendaAtivada(boolean a) { this.revendaAtivada = a; }
     public String getGrupo() { return grupo; }

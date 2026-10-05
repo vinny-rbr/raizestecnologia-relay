@@ -244,6 +244,8 @@ public class AdminController {
             if (v != null && !v.isEmpty()) devVers.computeIfAbsent(c, k -> new java.util.TreeSet<>()).add(v);
         }
 
+        Map<String, com.raizestecnologia.relay.revenda.Revenda> revPorCodigo = revendasPorCodigo();
+
         List<Map<String, Object>> lista = new ArrayList<>();
         for (var en : conhecidas.entrySet()) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -261,6 +263,11 @@ public class AdminController {
             m.put("mensalidade", mens);
             m.put("implantacao", IMPLANTACAO);
             m.put("grupo", l == null ? null : l.getGrupo());
+            String revCod = l == null ? null : l.getRevendaCodigo();
+            var rev = revCod == null ? null : revPorCodigo.get(revCod.toUpperCase());
+            m.put("revendaCodigo", revCod);
+            m.put("revendaNome", rev == null ? null : rev.getNome());
+            m.put("revendaPendente", l == null ? null : l.getRevendaPendente());
             java.time.LocalDate implVenc = l == null ? null : l.getImplantacaoVence();
             m.put("implantacaoVence", implVenc == null ? null : implVenc.toString());
             m.put("dispositivos", devCount.getOrDefault(en.getKey(), 0));
@@ -420,6 +427,76 @@ public class AdminController {
         if (codigo != null && !codigo.isBlank()) cobrancas.ativarRevendaStore(c);
         registrarAcao(c, "loja_revenda", codigo == null || codigo.isBlank() ? "Desvinculada" : "Revenda " + codigo);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "revenda", codigo == null ? "" : codigo)));
+    }
+
+    // ---- Transferencia de loja entre revendas (DONO autoriza) -------------
+    // Quando uma revenda instala o agente numa loja que ja e de outra revenda, a relay nao troca
+    // sozinha: grava o pedido na loja e o master decide aqui.
+
+    /** GET /api/admin/transferencias — pedidos pendentes, com os dados das duas revendas. */
+    @GetMapping("/transferencias")
+    public ResponseEntity<Map<String, Object>> transferencias() {
+        Map<String, com.raizestecnologia.relay.revenda.Revenda> porCodigo = revendasPorCodigo();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (var l : lojas.transferenciasPendentes()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("cnpj", l.getCnpj());
+            m.put("nome", l.getNome());
+            m.put("online", hub.online(l.getCnpj()));
+            m.put("pedidoEm", l.getRevendaPendenteEm() == null ? null : l.getRevendaPendenteEm().toString());
+            m.put("atual", revendaResumo(l.getRevendaCodigo(), porCodigo));
+            m.put("nova", revendaResumo(l.getRevendaPendente(), porCodigo));
+            out.add(m);
+        }
+        out.sort((a, b) -> String.valueOf(b.get("pedidoEm")).compareTo(String.valueOf(a.get("pedidoEm"))));
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
+    /** POST /api/admin/transferencias/{cnpj}/aprovar|recusar */
+    @PostMapping("/transferencias/{cnpj}/{acao}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> decidirTransferencia(@PathVariable String cnpj, @PathVariable String acao) {
+        String c = normalizeCnpj(cnpj);
+        var loja = c == null ? null : lojas.obter(c).orElse(null);
+        if (loja == null || loja.getRevendaPendente() == null)
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Pedido não encontrado"));
+        String de = loja.getRevendaCodigo(), para = loja.getRevendaPendente();
+        if ("aprovar".equals(acao)) {
+            lojas.vincularRevenda(c, para);
+            cobrancas.ativarRevendaStore(c);
+            registrarAcao(c, "loja_revenda", "Transferida de " + de + " para " + para);
+        } else if ("recusar".equals(acao)) {
+            lojas.recusarTransferencia(c);
+            registrarAcao(c, "loja_revenda", "Transferência para " + para + " recusada (fica com " + de + ")");
+        } else {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Ação inválida"));
+        }
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    private Map<String, com.raizestecnologia.relay.revenda.Revenda> revendasPorCodigo() {
+        Map<String, com.raizestecnologia.relay.revenda.Revenda> m = new java.util.HashMap<>();
+        for (var r : revendas.listarTodas()) if (r.getCodigo() != null) m.put(r.getCodigo().toUpperCase(), r);
+        return m;
+    }
+
+    private static Map<String, Object> revendaResumo(String codigo,
+                                                     Map<String, com.raizestecnologia.relay.revenda.Revenda> porCodigo) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("codigo", codigo);
+        var r = codigo == null ? null : porCodigo.get(codigo.toUpperCase());
+        m.put("encontrada", r != null);
+        if (r != null) {
+            m.put("id", r.getId());
+            m.put("nome", r.getNome());
+            m.put("cpfCnpj", r.getCpfCnpj());
+            m.put("email", r.getEmail());
+            m.put("telefone", r.getTelefone());
+            m.put("cidade", r.getCidade());
+            m.put("uf", r.getUf());
+            m.put("ativo", r.isAtivo());
+        }
+        return m;
     }
 
     // ---- Revendas e seus usuarios-master (DONO) --------------------------
