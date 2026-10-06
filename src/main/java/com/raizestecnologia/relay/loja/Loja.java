@@ -163,4 +163,13 @@ public class Loja {
     public String getCnpjReal() { return cnpj != null && cnpj.length() > 14 ? cnpj.substring(0, 14) : cnpj; }
     public Instant getRevendaLiberadaAte() { return revendaLiberadaAte; }
     public void setRevendaLiberadaAte(Instant v) { this.revendaLiberadaAte = v; }
+    /** Sistema do PDV pela instalação do agente ("PC:agente-host.jar" -> "Host"). null = agente antigo. */
+    public String getSistema() {
+        String i = instalacaoId == null ? "" : instalacaoId.toLowerCase();
+        if (i.endsWith("agente-link.jar")) return "Link";
+        if (i.endsWith("agente-host.jar")) return "Host";
+        if (i.endsWith("agente-lider.jar")) return "Lider";
+        if (i.endsWith("agente-syspdv.jar")) return "SysPDV";
+        return null;
+    }
 }

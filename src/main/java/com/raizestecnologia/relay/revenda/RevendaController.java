@@ -761,6 +761,7 @@ public class RevendaController {
         m.put("status", status);
         m.put("bloqueada", l.isBloqueada());
         m.put("grupo", l.getGrupo());
+        m.put("sistema", l.getSistema());
         // ciclo de R$30/mês que o revendedor paga ao dono
         m.put("mensalidade", com.raizestecnologia.relay.cobranca.CobrancaService.REVENDA_MENSALIDADE);
         // parcela "da vez": o próximo dia 5 só conta quando abre (10 dias antes); antes disso vale o que já venceu
