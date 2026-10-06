@@ -97,6 +97,9 @@ public class AgentHub {
             req.put("path", path);
             req.put("query", query == null ? "" : query);
             if (body != null) req.put("body", body);
+            // quem pediu (aparece no log do agente: "fulano abriu Vendas")
+            var quem = com.raizestecnologia.relay.auth.CurrentUser.get();
+            if (quem != null && quem.email() != null) req.put("user", quem.email());
             synchronized (s) {
                 s.sendMessage(new TextMessage(mapper.writeValueAsString(req)));
             }
