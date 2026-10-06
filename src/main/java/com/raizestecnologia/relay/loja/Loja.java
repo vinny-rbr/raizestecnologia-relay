@@ -86,6 +86,10 @@ public class Loja {
     @Column(name = "mensalidade_paga_ate")
     private java.time.LocalDate mensalidadePagaAte;
 
+    /** Revenda: valor da PRÓXIMA mensalidade quando diferente de R$30 (ex.: R$20 proporcional). null = cheio. */
+    @Column(name = "revenda_valor_proximo")
+    private Double revendaValorProximo;
+
     /** true = loja suspensa (pagamento pendente): os usuarios dela nao acessam o app. */
     @Column(name = "bloqueada", nullable = false, columnDefinition = "boolean not null default false")
     private boolean bloqueada = false;
@@ -142,4 +146,6 @@ public class Loja {
     public void setBloqueada(boolean bloqueada) { this.bloqueada = bloqueada; }
     public String getMotivoBloqueio() { return motivoBloqueio; }
     public void setMotivoBloqueio(String motivoBloqueio) { this.motivoBloqueio = motivoBloqueio; }
+    public Double getRevendaValorProximo() { return revendaValorProximo; }
+    public void setRevendaValorProximo(Double v) { this.revendaValorProximo = v; }
 }

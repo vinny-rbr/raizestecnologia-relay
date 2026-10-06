@@ -149,11 +149,12 @@ public class RevendaController {
         if (l == null || !r.getCodigo().equals(l.getRevendaCodigo())) {
             return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
         }
+        boolean nova = !l.isRevendaAtivada();
         l.setRevendaAtivada(true);
         l.setBloqueada(false);
         lojas.save(l);
         // monta o ciclo de R$30/mês que o revendedor paga ao dono (1º mês coberto pela ativação)
-        cobrancas.ativarRevendaStore(c);
+        cobrancas.ativarRevendaStore(c, nova);
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(lojas.findById(c).orElse(l))));
     }
 
@@ -754,9 +755,14 @@ public class RevendaController {
         m.put("grupo", l.getGrupo());
         // ciclo de R$30/mês que o revendedor paga ao dono
         m.put("mensalidade", com.raizestecnologia.relay.cobranca.CobrancaService.REVENDA_MENSALIDADE);
+        // parcela "da vez": o próximo dia 5 só conta quando abre (10 dias antes); antes disso vale o que já venceu
         LocalDate venc = proximoVenc(l.getDiaVencimento());
+        if (LocalDate.now(BRT).isBefore(venc.minusDays(com.raizestecnologia.relay.cobranca.CobrancaService.LIBERA_PAGAMENTO_DIAS))) {
+            venc = venc.minusMonths(1);
+        }
         boolean pago = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(venc);
         m.put("pago", pago);
+        m.put("valorAPagar", com.raizestecnologia.relay.cobranca.CobrancaService.valorRevenda(l));
         m.put("motivo", l.isBloqueada() ? (l.getMotivoBloqueio() == null ? "" : l.getMotivoBloqueio()) : "");
         return m;
     }

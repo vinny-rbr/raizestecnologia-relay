@@ -253,19 +253,76 @@ public class CobrancaService {
     // ---- Revenda: o revendedor paga R$30/mês/loja ao dono ----
     public static final double REVENDA_MENSALIDADE = 30.0;
 
-    /** Prepara a loja instalada por revendedor pro ciclo de R$30/mês (dia 5, sem implantação
-     *  separada; 1º mês coberto pela ativação). Depois disso o auto-bloqueio já cuida do resto. */
+    /** Proporcional: revenda que fecha o cliente do dia 20 em diante paga só isso no 1º dia 5. */
+    public static final double REVENDA_PROPORCIONAL = 20.0;
+
+    /** Prepara a loja instalada por revendedor pro ciclo de R$30/mês (dia 5, sem implantação separada).
+     *  A ativação NÃO cobre o mês: a revenda paga os R$30 (boleto/Pix) e o 1º pagamento define o ciclo
+     *  (ver {@link #primeiroCicloRevenda}). Sem pagar, o auto-bloqueio pega 5 dias após o 1º dia 5. */
     @Transactional
-    public void ativarRevendaStore(String cnpj) {
+    public void ativarRevendaStore(String cnpj, boolean nova) {
         apply(cnpj, l -> {
-            if (l.getAtivadaEm() == null) l.setAtivadaEm(Instant.now());
+            // nova ativação sem histórico: o dia de hoje é o "fechou o cliente" (base do 1º ciclo)
+            if (l.getAtivadaEm() == null || (nova && l.getMensalidadePagaAte() == null)) l.setAtivadaEm(Instant.now());
             l.setDiaVencimento(DIA_COBRANCA);
             l.setMensalidade(REVENDA_MENSALIDADE);
             l.setImplantacaoPaga(true);
-            LocalDate ativ = l.getAtivadaEm().atZone(BRT).toLocalDate();
-            l.setMensalidadePagaAte(primeiroVenc(ativ, DIA_COBRANCA));
             liberar(l);
         }, "revenda_ciclo_ativado");
+    }
+
+    /** Quanto a revenda paga agora por esta loja (R$30 ou o proporcional de R$20). */
+    public static double valorRevenda(Loja l) {
+        return l.getRevendaValorProximo() != null ? l.getRevendaValorProximo() : REVENDA_MENSALIDADE;
+    }
+
+    /** 1º pagamento da loja de revenda, pelo dia em que fechou o cliente (ativação):
+     *  dia 1–4 → os R$30 cobrem até o dia 5 do mês SEGUINTE (pula o dia 5 deste mês);
+     *  dia 5–19 → cobre até o próximo dia 5 (aí R$30 cheio);
+     *  dia 20+ → cobre até o próximo dia 5 e nesse dia 5 paga só R$20 (proporcional). */
+    private void primeiroCicloRevenda(Loja l, LocalDate fechou) {
+        // "pago até" = vencimento (dia 5) já quitado. Dia 1–4: quita o dia 5 deste mês; senão o dia 5 que
+        // já passou, e o próximo dia 5 é cobrado (R$20 se fechou do dia 20 em diante).
+        l.setMensalidadePagaAte(fechou.withDayOfMonth(DIA_COBRANCA));
+        if (fechou.getDayOfMonth() >= 20) l.setRevendaValorProximo(REVENDA_PROPORCIONAL);
+    }
+
+    /** Ajuste único (pedido do Lucas, 06/10/2026): revendas que fecharam/pagaram do dia 20 ao fim de
+     *  setembro e foram cobradas/bloqueadas no dia 5 de outubro pagam só R$20 nesse dia 5. Idempotente:
+     *  só pega quem ainda deve o ciclo de 05/10 e não tem valor proporcional definido. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @Transactional
+    public void ajusteProporcionalSetembro() {
+        try {
+            LocalDate ini = LocalDate.of(2026, 9, 20), fim = LocalDate.of(2026, 9, 30), dia5 = LocalDate.of(2026, 10, 5);
+            int n = 0;
+            for (Loja l : lojas.findAll()) {
+                if (l.getRevendaCodigo() == null || !l.isRevendaAtivada() || l.getRevendaValorProximo() != null) continue;
+                if (l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(dia5)) continue; // outubro já quitado
+                boolean noPeriodo = false;
+                if (l.getAtivadaEm() != null) {
+                    LocalDate a = l.getAtivadaEm().atZone(BRT).toLocalDate();
+                    noPeriodo = !a.isBefore(ini) && !a.isAfter(fim);
+                }
+                for (Pagamento p : pagamentos.findByCnpjOrderByPagoEmDesc(l.getCnpj())) {
+                    LocalDate d = p.getPagoEm() == null ? null : p.getPagoEm().atZone(BRT).toLocalDate();
+                    if (d != null && !d.isBefore(ini) && !d.isAfter(fim)) noPeriodo = true;
+                }
+                if (!noPeriodo) continue;
+                l.setMensalidadePagaAte(LocalDate.of(2026, 9, 5)); // setembro coberto; deve só o dia 5 de outubro
+                l.setRevendaValorProximo(REVENDA_PROPORCIONAL);
+                if (l.isBloqueada() && l.getMotivoBloqueio() != null && l.getMotivoBloqueio().startsWith("Pagamento em atraso")) {
+                    l.setBloqueada(false);
+                    l.setMotivoBloqueio(null);
+                }
+                lojas.save(l);
+                n++;
+                log.info("[cobranca] ajuste proporcional R$20 (out/2026) - loja {}", l.getCnpj());
+            }
+            log.info("[cobranca] ajuste proporcional setembro: {} loja(s)", n);
+        } catch (Exception e) {
+            log.warn("[cobranca] ajuste proporcional falhou: {}", e.getMessage());
+        }
     }
 
     /** Revendedor pagou os R$30 do mês desta loja ao dono: dá baixa (avança o ciclo) e libera. */
@@ -288,7 +345,9 @@ public class CobrancaService {
             lojas.findById(c).ifPresent(sel::add);
         }
         if (sel.isEmpty()) throw new IllegalArgumentException("Selecione ao menos uma loja");
-        double total = round2(REVENDA_MENSALIDADE * sel.size());
+        double total = 0;
+        for (Loja l : sel) total += valorRevenda(l);
+        total = round2(total);
         String desc = "Meu Giro (revenda) - " + sel.size() + " loja(s)";
         if (custId == null || custId.isBlank()) custId = asaas.criarCliente(nome, doc, email);
         LocalDate venc = LocalDate.now(BRT).plusDays(3);
@@ -312,19 +371,23 @@ public class CobrancaService {
     /** Marca a MENSALIDADE atual como paga: avança o "pago até" para o próximo dia 5. */
     @Transactional
     public boolean marcarMensalidadePaga(String cnpj, boolean manual) {
+        double[] valor = {0};
         boolean ok = apply(cnpj, l -> {
             int dia = l.getDiaVencimento();
             LocalDate ativ = l.getAtivadaEm() != null ? l.getAtivadaEm().atZone(BRT).toLocalDate() : LocalDate.now(BRT);
-            LocalDate novaAte = l.getMensalidadePagaAte() == null
-                    ? primeiroVenc(ativ, dia)
-                    : proximoVenc(l.getMensalidadePagaAte().plusDays(1), dia);
-            l.setMensalidadePagaAte(novaAte);
+            boolean revenda = l.getRevendaCodigo() != null;
+            valor[0] = revenda ? valorRevenda(l) : (l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO);
+            l.setRevendaValorProximo(null); // proporcional vale só pra uma parcela
+            if (l.getMensalidadePagaAte() == null) {
+                if (revenda) primeiroCicloRevenda(l, ativ);
+                else l.setMensalidadePagaAte(primeiroVenc(ativ, dia));
+            } else {
+                l.setMensalidadePagaAte(proximoVenc(l.getMensalidadePagaAte().plusDays(1), dia));
+            }
             liberar(l);
         }, manual ? "mensalidade_paga_manual" : "mensalidade_paga_asaas");
         lojas.findById(cnpj.replaceAll("\\D", "")).ifPresent(l -> pagamentos.save(new Pagamento(
-                l.getCnpj(), "Mensalidade",
-                l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO,
-                l.getMensalidadePagaAte(), manual ? "manual" : "asaas")));
+                l.getCnpj(), "Mensalidade", valor[0], l.getMensalidadePagaAte(), manual ? "manual" : "asaas")));
         return ok;
     }
 
