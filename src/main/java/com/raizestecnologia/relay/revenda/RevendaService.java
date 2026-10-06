@@ -32,21 +32,33 @@ public class RevendaService {
         if (em.isBlank() || !em.contains("@")) throw new IllegalArgumentException("E-mail inválido");
         if (senha == null || senha.length() < 6) throw new IllegalArgumentException("Senha muito curta (mín. 6)");
         if (repo.existsByEmail(em)) throw new IllegalArgumentException("Já existe uma revenda com esse e-mail");
+        String doc = cpfCnpj == null ? "" : cpfCnpj.replaceAll("\\D", "");
+        if (doc.length() != 11 && doc.length() != 14) throw new IllegalArgumentException("CPF ou CNPJ inválido");
+        if (repo.existsByCpfCnpj(doc)) throw new IllegalArgumentException("Já existe uma revenda com esse CPF/CNPJ");
 
         Revenda r = new Revenda(nm,
-                cpfCnpj == null ? null : cpfCnpj.replaceAll("\\D", ""),
+                doc,
                 em, telefone, cidade,
                 uf == null ? null : uf.trim().toUpperCase(),
                 encoder.encode(senha), gerarCodigo());
         return repo.save(r);
     }
 
-    /** Autentica por e-mail/senha. Vazio se inválido ou inativo. */
+    /** Autentica por e-mail OU CPF/CNPJ + senha. Vazio se inválido ou inativo. */
     public Optional<Revenda> autenticar(String email, String senha) {
         String em = email == null ? "" : email.trim().toLowerCase();
+        if (senha == null) return Optional.empty();
+        if (!em.contains("@")) {
+            String doc = em.replaceAll("\\D", "");
+            if (doc.length() != 11 && doc.length() != 14) return Optional.empty();
+            return repo.findByCpfCnpj(doc).stream()
+                    .filter(Revenda::isAtivo)
+                    .filter(r -> encoder.matches(senha, r.getSenhaHash()))
+                    .findFirst();
+        }
         return repo.findByEmail(em)
                 .filter(Revenda::isAtivo)
-                .filter(r -> senha != null && encoder.matches(senha, r.getSenhaHash()));
+                .filter(r -> encoder.matches(senha, r.getSenhaHash()));
     }
 
     public Optional<Revenda> porId(Long id) { return id == null ? Optional.empty() : repo.findById(id); }

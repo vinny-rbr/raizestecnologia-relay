@@ -7,6 +7,8 @@ import java.util.Optional;
 public interface RevendaRepository extends JpaRepository<Revenda, Long> {
     Optional<Revenda> findByEmail(String email);
     Optional<Revenda> findByCodigo(String codigo);
+    java.util.List<Revenda> findByCpfCnpj(String cpfCnpj);
+    boolean existsByCpfCnpj(String cpfCnpj);
     boolean existsByEmail(String email);
     boolean existsByCodigo(String codigo);
 }
