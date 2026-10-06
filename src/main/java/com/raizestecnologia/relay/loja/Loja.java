@@ -91,6 +91,10 @@ public class Loja {
     @Column(name = "instalacao_id", length = 120)
     private String instalacaoId;
 
+    /** Loja com o mesmo CNPJ da própria revenda: não é cobrada nem bloqueada por pagamento. */
+    @Column(name = "cortesia", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean cortesia = false;
+
     /** Revenda: depois de ativar, a loja fica liberada sem pagar até este momento (2h); aí bloqueia. */
     @Column(name = "revenda_liberada_ate")
     private Instant revendaLiberadaAte;
@@ -172,4 +176,6 @@ public class Loja {
         if (i.endsWith("agente-syspdv.jar")) return "SysPDV";
         return null;
     }
+    public boolean isCortesia() { return cortesia; }
+    public void setCortesia(boolean v) { this.cortesia = v; }
 }

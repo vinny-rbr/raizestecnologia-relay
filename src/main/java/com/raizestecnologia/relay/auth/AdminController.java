@@ -264,6 +264,7 @@ public class AdminController {
             m.put("implantacao", IMPLANTACAO);
             m.put("grupo", l == null ? null : l.getGrupo());
             m.put("sistema", l == null ? null : l.getSistema());
+            m.put("cortesia", l != null && l.isCortesia());
             String revCod = l == null ? null : l.getRevendaCodigo();
             var rev = revCod == null ? null : revPorCodigo.get(revCod.toUpperCase());
             m.put("revendaCodigo", revCod);

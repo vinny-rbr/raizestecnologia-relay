@@ -264,7 +264,7 @@ public class CobrancaService {
         try {
             Instant agora = Instant.now();
             for (Loja l : lojas.findAll()) {
-                if (l.getRevendaLiberadaAte() == null || l.isBloqueada()) continue;
+                if (l.getRevendaLiberadaAte() == null || l.isBloqueada() || l.isCortesia()) continue;
                 if (l.getMensalidadePagaAte() != null) { l.setRevendaLiberadaAte(null); lojas.save(l); continue; }
                 if (agora.isBefore(l.getRevendaLiberadaAte())) continue;
                 l.setBloqueada(true);
@@ -376,9 +376,9 @@ public class CobrancaService {
         java.util.List<Loja> sel = new java.util.ArrayList<>();
         for (String raw : cnpjs) {
             String c = raw == null ? "" : raw.replaceAll("\\D", "");
-            lojas.findById(c).ifPresent(sel::add);
+            lojas.findById(c).filter(l -> !l.isCortesia()).ifPresent(sel::add);
         }
-        if (sel.isEmpty()) throw new IllegalArgumentException("Selecione ao menos uma loja");
+        if (sel.isEmpty()) throw new IllegalArgumentException("Selecione ao menos uma loja (as do seu próprio CNPJ não são cobradas)");
         double total = 0;
         for (Loja l : sel) total += valorRevenda(l);
         total = round2(total);
@@ -481,7 +481,7 @@ public class CobrancaService {
         LocalDate hoje = LocalDate.now(BRT);
         int n = 0;
         for (Loja l : lojas.findAll()) {
-            if (l.isBloqueada() || l.getAtivadaEm() == null) continue;
+            if (l.isBloqueada() || l.getAtivadaEm() == null || l.isCortesia()) continue;
             int dia = l.getDiaVencimento();
             LocalDate ativ = l.getAtivadaEm().atZone(BRT).toLocalDate();
             LocalDate primeira = primeiroVenc(ativ, dia);

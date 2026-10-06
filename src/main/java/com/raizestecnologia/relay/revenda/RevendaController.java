@@ -58,12 +58,15 @@ public class RevendaController {
     private final com.raizestecnologia.relay.notify.NotificationService notifier;
     private final UserEmpresaRepository vinculos;
 
+    private final CortesiaRevenda cortesia;
+
     public RevendaController(RevendaService revendas, LojaRepository lojas, AgentHub hub, JwtService jwt,
                              AppUserRepository users, PasswordEncoder encoder,
                              com.raizestecnologia.relay.cobranca.CobrancaService cobrancas,
                              com.raizestecnologia.relay.auth.LoginThrottle throttle,
                              com.raizestecnologia.relay.notify.NotificationService notifier,
-                             UserEmpresaRepository vinculos) {
+                             UserEmpresaRepository vinculos, CortesiaRevenda cortesia) {
+        this.cortesia = cortesia;
         this.revendas = revendas;
         this.lojas = lojas;
         this.hub = hub;
@@ -158,6 +161,7 @@ public class RevendaController {
         lojas.save(l);
         // monta o ciclo de R$30/mês que o revendedor paga ao dono (1º mês coberto pela ativação)
         cobrancas.ativarRevendaStore(c, nova);
+        lojas.findById(c).ifPresent(cortesia::aplicar); // CNPJ da própria revenda: sem cobrança
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(lojas.findById(c).orElse(l))));
     }
 
@@ -770,9 +774,11 @@ public class RevendaController {
             venc = venc.minusMonths(1);
         }
         boolean pago = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(venc);
+        if (l.isCortesia()) pago = true;
         m.put("pago", pago);
-        m.put("liberadaAte", l.getRevendaLiberadaAte() == null ? null : l.getRevendaLiberadaAte().toString());
-        m.put("valorAPagar", com.raizestecnologia.relay.cobranca.CobrancaService.valorRevenda(l));
+        m.put("cortesia", l.isCortesia());
+        m.put("liberadaAte", l.isCortesia() || l.getRevendaLiberadaAte() == null ? null : l.getRevendaLiberadaAte().toString());
+        m.put("valorAPagar", l.isCortesia() ? 0 : com.raizestecnologia.relay.cobranca.CobrancaService.valorRevenda(l));
         m.put("motivo", l.isBloqueada() ? (l.getMotivoBloqueio() == null ? "" : l.getMotivoBloqueio()) : "");
         return m;
     }
