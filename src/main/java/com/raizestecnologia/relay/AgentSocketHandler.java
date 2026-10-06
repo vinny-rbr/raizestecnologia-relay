@@ -22,13 +22,15 @@ public class AgentSocketHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(AgentSocketHandler.class);
 
     private final AgentHub hub;
+    private final com.raizestecnologia.relay.loja.LojaService lojas;
     private final String agentKey; // chave esperada dos agentes (env AGENT_KEY); vazio = auth desligada
     private final boolean enforce; // true = rejeita agente sem chave; false = so avisa (transicao)
 
-    public AgentSocketHandler(AgentHub hub,
+    public AgentSocketHandler(AgentHub hub, com.raizestecnologia.relay.loja.LojaService lojas,
                               @Value("${AGENT_KEY:}") String agentKey,
                               @Value("${AGENT_AUTH_ENFORCE:false}") boolean enforce) {
         this.hub = hub;
+        this.lojas = lojas;
         this.agentKey = agentKey == null ? "" : agentKey;
         this.enforce = enforce;
     }
@@ -54,7 +56,9 @@ public class AgentSocketHandler extends TextWebSocketHandler {
                     if (chaveInvalida) {
                         log.warn("[agent-auth] TRANSICAO: agente sem chave valida (cnpj {}) - aceito por enquanto.", cnpj);
                     }
-                    hub.register(cnpj, nome, revenda, session);
+                    // mesmo CNPJ em outro PC/sistema = outra loja (chave própria)
+                    String chave = lojas.resolverChave(cnpj, nome, node.path("instalacao").asText(""));
+                    hub.register(chave, nome, revenda, session);
                     session.sendMessage(new TextMessage("{\"type\":\"registered\"}"));
                 }
             }

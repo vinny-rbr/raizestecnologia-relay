@@ -7,6 +7,8 @@ import java.util.Optional;
 public interface LojaRepository extends JpaRepository<Loja, String> {
     Optional<Loja> findByAsaasCustomerId(String asaasCustomerId);
 
+    Optional<Loja> findFirstByInstalacaoId(String instalacaoId);
+
     /** Lojas de uma revenda (pelo codigo carregado no instalador do revendedor). */
     java.util.List<Loja> findByRevendaCodigoOrderByAtualizadoEmDesc(String revendaCodigo);
 }

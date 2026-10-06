@@ -29,6 +29,42 @@ public class LojaService {
         this.notifier = notifier;
     }
 
+    /**
+     * Qual loja é este agente. Sem instalação (agente antigo) = o próprio CNPJ, como sempre foi.
+     * Com instalação: a loja que já é dela; senão a loja do CNPJ se ainda não tiver dona;
+     * senão uma loja nova com o mesmo CNPJ (chave CNPJ + 02, 03...) — aparecem as duas.
+     */
+    @Transactional
+    public synchronized String resolverChave(String cnpjRaw, String nome, String instalacao) {
+        String c = norm(cnpjRaw);
+        if (c.isBlank() || instalacao == null || instalacao.isBlank()) return c;
+        String inst = instalacao.trim();
+        var minha = repo.findFirstByInstalacaoId(inst);
+        if (minha.isPresent()) return minha.get().getCnpj();
+        Loja base = repo.findById(c).orElse(null);
+        if (base == null) {
+            Loja l = new Loja(c, nome);
+            l.setInstalacaoId(inst);
+            repo.save(l);
+            return c;
+        }
+        if (base.getInstalacaoId() == null) {
+            base.setInstalacaoId(inst);
+            repo.save(base);
+            return c;
+        }
+        for (int n = 2; n < 100; n++) {
+            String k = c + String.format("%02d", n);
+            if (repo.existsById(k)) continue;
+            Loja l = new Loja(k, nome);
+            l.setInstalacaoId(inst);
+            repo.save(l);
+            log.info("[loja] CNPJ {} em outra instalação ({}): nova loja {}", c, nome, k);
+            return k;
+        }
+        return c;
+    }
+
     @EventListener
     @Transactional
     public void onConnect(AgentConnectedEvent ev) {

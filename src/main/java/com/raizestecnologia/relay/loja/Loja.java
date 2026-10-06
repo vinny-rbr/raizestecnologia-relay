@@ -86,6 +86,11 @@ public class Loja {
     @Column(name = "mensalidade_paga_ate")
     private java.time.LocalDate mensalidadePagaAte;
 
+    /** Identifica o PC+sistema do agente (MachineGuid do Windows + jar). CNPJ repetido em outra
+     *  instalação vira outra loja, com chave = CNPJ + 2 dígitos (ex.: 1054348700010202). */
+    @Column(name = "instalacao_id", length = 120)
+    private String instalacaoId;
+
     /** Revenda: valor da PRÓXIMA mensalidade quando diferente de R$30 (ex.: R$20 proporcional). null = cheio. */
     @Column(name = "revenda_valor_proximo")
     private Double revendaValorProximo;
@@ -148,4 +153,8 @@ public class Loja {
     public void setMotivoBloqueio(String motivoBloqueio) { this.motivoBloqueio = motivoBloqueio; }
     public Double getRevendaValorProximo() { return revendaValorProximo; }
     public void setRevendaValorProximo(Double v) { this.revendaValorProximo = v; }
+    public String getInstalacaoId() { return instalacaoId; }
+    public void setInstalacaoId(String v) { this.instalacaoId = v; }
+    /** CNPJ de verdade (a chave pode ter 2 dígitos a mais quando o CNPJ se repete). */
+    public String getCnpjReal() { return cnpj != null && cnpj.length() > 14 ? cnpj.substring(0, 14) : cnpj; }
 }

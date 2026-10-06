@@ -99,7 +99,7 @@ public class CobrancaService {
 
         String cust = l.getAsaasCustomerId();
         if (cust == null || cust.isBlank()) {
-            cust = asaas.criarCliente(l.getNome(), l.getCnpj(), email);
+            cust = asaas.criarCliente(l.getNome(), l.getCnpjReal(), email);
             l.setAsaasCustomerId(cust);
             l.setAsaasSubscriptionId(null);
         }
@@ -111,7 +111,7 @@ public class CobrancaService {
         } catch (AsaasClient.AsaasException e) {
             // Cliente pode estar inválido (ex.: id do sandbox depois de trocar p/ produção). Recria e tenta 1x.
             log.warn("[cobranca] cliente {} inválido ({}); recriando na conta atual", cust, e.getMessage());
-            cust = asaas.criarCliente(l.getNome(), l.getCnpj(), email);
+            cust = asaas.criarCliente(l.getNome(), l.getCnpjReal(), email);
             l.setAsaasCustomerId(cust);
             l.setAsaasSubscriptionId(null); // assinatura antiga era do cliente antigo
             cob = asaas.criarCobranca(cust, est.valor(), venc, descricao);
@@ -192,7 +192,7 @@ public class CobrancaService {
         Loja pagador = sel.get(0);
         String cust = pagador.getAsaasCustomerId();
         if (cust == null || cust.isBlank()) {
-            cust = asaas.criarCliente(pagador.getNome(), pagador.getCnpj(), email);
+            cust = asaas.criarCliente(pagador.getNome(), pagador.getCnpjReal(), email);
             pagador.setAsaasCustomerId(cust);
         }
         LocalDate venc = LocalDate.now(BRT).plusDays(3);
@@ -200,7 +200,7 @@ public class CobrancaService {
         try {
             cob = asaas.criarCobranca(cust, total, venc, desc.toString());
         } catch (AsaasClient.AsaasException e) {
-            cust = asaas.criarCliente(pagador.getNome(), pagador.getCnpj(), email);
+            cust = asaas.criarCliente(pagador.getNome(), pagador.getCnpjReal(), email);
             pagador.setAsaasCustomerId(cust);
             pagador.setAsaasSubscriptionId(null);
             cob = asaas.criarCobranca(cust, total, venc, desc.toString());
