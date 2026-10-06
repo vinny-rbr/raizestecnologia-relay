@@ -253,6 +253,36 @@ public class CobrancaService {
     // ---- Revenda: o revendedor paga R$30/mês/loja ao dono ----
     public static final double REVENDA_MENSALIDADE = 30.0;
 
+    /** Horas que a loja ativada pela revenda funciona antes do pagamento dos R$30. */
+    public static final int REVENDA_HORAS_SEM_PAGAR = 2;
+    public static final String MOTIVO_ATIVACAO = "Ativação não paga: a revenda precisa pagar os R$ 30 para liberar.";
+
+    /** A cada 5 min: loja de revenda ativada há mais de 2h sem pagar → bloqueia. */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 60_000, fixedDelay = 300_000)
+    @Transactional
+    public void bloquearAtivacaoNaoPaga() {
+        try {
+            Instant agora = Instant.now();
+            for (Loja l : lojas.findAll()) {
+                if (l.getRevendaLiberadaAte() == null || l.isBloqueada()) continue;
+                if (l.getMensalidadePagaAte() != null) { l.setRevendaLiberadaAte(null); lojas.save(l); continue; }
+                if (agora.isBefore(l.getRevendaLiberadaAte())) continue;
+                l.setBloqueada(true);
+                l.setMotivoBloqueio(MOTIVO_ATIVACAO);
+                lojas.save(l);
+                log.info("[cobranca] loja {} bloqueada: ativação da revenda não paga em {}h", l.getCnpj(), REVENDA_HORAS_SEM_PAGAR);
+            }
+        } catch (Exception e) {
+            log.warn("[cobranca] falha no bloqueio de ativação não paga: {}", e.getMessage());
+        }
+    }
+
+    /** Bloqueio que só o pagamento tira (a revenda não pode liberar por conta própria). */
+    public static boolean bloqueioPorPagamento(Loja l) {
+        String m = l.getMotivoBloqueio();
+        return l.isBloqueada() && m != null && (m.startsWith("Ativação não paga") || m.startsWith("Pagamento em atraso"));
+    }
+
     /** Proporcional: revenda que fecha o cliente do dia 20 em diante paga só isso no 1º dia 5. */
     public static final double REVENDA_PROPORCIONAL = 20.0;
 
@@ -264,6 +294,10 @@ public class CobrancaService {
         apply(cnpj, l -> {
             // nova ativação sem histórico: o dia de hoje é o "fechou o cliente" (base do 1º ciclo)
             if (l.getAtivadaEm() == null || (nova && l.getMensalidadePagaAte() == null)) l.setAtivadaEm(Instant.now());
+            // ativação nova ainda não paga: 2h de uso liberado, depois bloqueia até pagar
+            if (nova && l.getMensalidadePagaAte() == null) {
+                l.setRevendaLiberadaAte(Instant.now().plus(java.time.Duration.ofHours(REVENDA_HORAS_SEM_PAGAR)));
+            }
             l.setDiaVencimento(DIA_COBRANCA);
             l.setMensalidade(REVENDA_MENSALIDADE);
             l.setImplantacaoPaga(true);
@@ -378,6 +412,7 @@ public class CobrancaService {
             boolean revenda = l.getRevendaCodigo() != null;
             valor[0] = revenda ? valorRevenda(l) : (l.getMensalidade() != null ? l.getMensalidade() : MENSALIDADE_PADRAO);
             l.setRevendaValorProximo(null); // proporcional vale só pra uma parcela
+            l.setRevendaLiberadaAte(null);
             if (l.getMensalidadePagaAte() == null) {
                 if (revenda) primeiroCicloRevenda(l, ativ);
                 else l.setMensalidadePagaAte(primeiroVenc(ativ, dia));

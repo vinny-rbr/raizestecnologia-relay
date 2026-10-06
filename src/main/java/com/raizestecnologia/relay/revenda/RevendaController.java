@@ -149,6 +149,9 @@ public class RevendaController {
         if (l == null || !r.getCodigo().equals(l.getRevendaCodigo())) {
             return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
         }
+        if (com.raizestecnologia.relay.cobranca.CobrancaService.bloqueioPorPagamento(l)) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Essa loja só libera com o pagamento: selecione e gere o boleto/Pix."));
+        }
         boolean nova = !l.isRevendaAtivada();
         l.setRevendaAtivada(true);
         l.setBloqueada(false);
@@ -176,6 +179,9 @@ public class RevendaController {
     public ResponseEntity<Map<String, Object>> desbloquear(HttpServletRequest req, @PathVariable String cnpj) {
         Loja l = lojaDoRevendedor(req, cnpj);
         if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        if (com.raizestecnologia.relay.cobranca.CobrancaService.bloqueioPorPagamento(l)) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Essa loja só libera com o pagamento: selecione e gere o boleto/Pix."));
+        }
         l.setBloqueada(false);
         l.setMotivoBloqueio(null);
         lojas.save(l);
@@ -187,6 +193,8 @@ public class RevendaController {
     public ResponseEntity<Map<String, Object>> pago(HttpServletRequest req, @PathVariable String cnpj) {
         Loja l = lojaDoRevendedor(req, cnpj);
         if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        // auto-declaração removida: a revenda paga só pelo boleto/Pix (Asaas confirma e libera)
+        if (l != null) return ResponseEntity.status(403).body(ApiEnvelope.fail("O pagamento é feito pelo boleto/Pix do painel."));
         cobrancas.revendaPagou(l.getCnpj());
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(lojas.findById(l.getCnpj()).orElse(l))));
     }
@@ -762,6 +770,7 @@ public class RevendaController {
         }
         boolean pago = l.getMensalidadePagaAte() != null && !l.getMensalidadePagaAte().isBefore(venc);
         m.put("pago", pago);
+        m.put("liberadaAte", l.getRevendaLiberadaAte() == null ? null : l.getRevendaLiberadaAte().toString());
         m.put("valorAPagar", com.raizestecnologia.relay.cobranca.CobrancaService.valorRevenda(l));
         m.put("motivo", l.isBloqueada() ? (l.getMotivoBloqueio() == null ? "" : l.getMotivoBloqueio()) : "");
         return m;
