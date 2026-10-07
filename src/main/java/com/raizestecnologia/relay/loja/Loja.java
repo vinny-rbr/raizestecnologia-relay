@@ -95,7 +95,7 @@ public class Loja {
     @Column(name = "cortesia", nullable = false, columnDefinition = "boolean not null default false")
     private boolean cortesia = false;
 
-    /** Revenda: depois de ativar, a loja fica liberada sem pagar até este momento (2h); aí bloqueia. */
+    /** Revenda: depois de ativar, a loja fica liberada sem pagar até este momento (24h); aí bloqueia. */
     @Column(name = "revenda_liberada_ate")
     private Instant revendaLiberadaAte;
 

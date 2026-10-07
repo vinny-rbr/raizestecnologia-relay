@@ -38,7 +38,7 @@ public class CortesiaRevenda {
         return !doc.isBlank() && doc.equals(l.getCnpjReal());
     }
 
-    /** Acerta a marca de cortesia; se virou cortesia, tira bloqueio por pagamento e o prazo de 2h. */
+    /** Acerta a marca de cortesia; se virou cortesia, tira bloqueio por pagamento e o prazo de 24h. */
     @Transactional
     public boolean aplicar(Loja l) {
         boolean p = propria(l);

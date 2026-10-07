@@ -254,10 +254,33 @@ public class CobrancaService {
     public static final double REVENDA_MENSALIDADE = 30.0;
 
     /** Horas que a loja ativada pela revenda funciona antes do pagamento dos R$30. */
-    public static final int REVENDA_HORAS_SEM_PAGAR = 2;
+    public static final int REVENDA_HORAS_SEM_PAGAR = 24;
     public static final String MOTIVO_ATIVACAO = "Ativação não paga: a revenda precisa pagar os R$ 30 para liberar.";
 
-    /** A cada 5 min: loja de revenda ativada há mais de 2h sem pagar → bloqueia. */
+    /** Ao subir: lojas que pegaram o prazo antigo (2h) passam a ter 24h a partir da ativação;
+     *  as que já tinham bloqueado por isso e ainda estão dentro das 24h voltam a funcionar. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @Transactional
+    public void ajustarPrazoAtivacao() {
+        try {
+            Instant agora = Instant.now();
+            for (Loja l : lojas.findAll()) {
+                if (l.getRevendaCodigo() == null || l.getMensalidadePagaAte() != null || l.isCortesia() || l.getAtivadaEm() == null) continue;
+                boolean bloqAtiv = l.isBloqueada() && MOTIVO_ATIVACAO.equals(l.getMotivoBloqueio());
+                if (l.getRevendaLiberadaAte() == null && !bloqAtiv) continue;
+                Instant ate = l.getAtivadaEm().plus(java.time.Duration.ofHours(REVENDA_HORAS_SEM_PAGAR));
+                if (ate.equals(l.getRevendaLiberadaAte()) && !bloqAtiv) continue;
+                if (bloqAtiv && agora.isBefore(ate)) { l.setBloqueada(false); l.setMotivoBloqueio(null); }
+                if (!bloqAtiv || agora.isBefore(ate)) l.setRevendaLiberadaAte(ate);
+                lojas.save(l);
+                log.info("[cobranca] prazo da ativação da loja {} ajustado para {}h (até {})", l.getCnpj(), REVENDA_HORAS_SEM_PAGAR, ate);
+            }
+        } catch (Exception e) {
+            log.warn("[cobranca] falha ao ajustar prazo de ativação: {}", e.getMessage());
+        }
+    }
+
+    /** A cada 5 min: loja de revenda ativada há mais de 24h sem pagar → bloqueia. */
     @org.springframework.scheduling.annotation.Scheduled(initialDelay = 60_000, fixedDelay = 300_000)
     @Transactional
     public void bloquearAtivacaoNaoPaga() {
@@ -294,7 +317,7 @@ public class CobrancaService {
         apply(cnpj, l -> {
             // nova ativação sem histórico: o dia de hoje é o "fechou o cliente" (base do 1º ciclo)
             if (l.getAtivadaEm() == null || (nova && l.getMensalidadePagaAte() == null)) l.setAtivadaEm(Instant.now());
-            // ativação nova ainda não paga: 2h de uso liberado, depois bloqueia até pagar
+            // ativação nova ainda não paga: 24h de uso liberado, depois bloqueia até pagar
             if (nova && l.getMensalidadePagaAte() == null) {
                 l.setRevendaLiberadaAte(Instant.now().plus(java.time.Duration.ofHours(REVENDA_HORAS_SEM_PAGAR)));
             }
