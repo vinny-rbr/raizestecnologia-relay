@@ -304,9 +304,8 @@ public class RevendaController {
     /** GET /api/revenda/usuarios — usuarios das lojas do revendedor logado. */
     @GetMapping("/usuarios")
     public ResponseEntity<Map<String, Object>> usuarios(HttpServletRequest req) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Map<String, String> nomes = nomesDasLojas(r);
+        Map<String, String> nomes = escopoUsuarios(req);
+        if (nomes == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
         List<Map<String, Object>> out = new ArrayList<>();
         for (AppUser u : users.findAll()) {
             List<UserEmpresa> vs = vinculos.findByUserId(u.getId());
@@ -321,9 +320,8 @@ public class RevendaController {
     @PostMapping("/usuarios")
     @Transactional
     public ResponseEntity<Map<String, Object>> criarUsuario(HttpServletRequest req, @RequestBody Map<String, Object> b) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Map<String, String> nomes = nomesDasLojas(r);
+        Map<String, String> nomes = escopoUsuarios(req);
+        if (nomes == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
         String email = str(b.get("email"));
         String senha = str(b.get("senha"));
         String login = AppUser.normalizarLogin(str(b.get("login")));
@@ -360,9 +358,8 @@ public class RevendaController {
     @Transactional
     public ResponseEntity<Map<String, Object>> editarUsuario(HttpServletRequest req, @PathVariable Long id,
                                                              @RequestBody Map<String, Object> b) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Map<String, String> nomes = nomesDasLojas(r);
+        Map<String, String> nomes = escopoUsuarios(req);
+        if (nomes == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
         AppUser u = users.findById(id).orElse(null);
         List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
         if (u == null || !podeMexer(u, vs, nomes.keySet()))
@@ -390,9 +387,8 @@ public class RevendaController {
     @Transactional
     public ResponseEntity<Map<String, Object>> senhaUsuario(HttpServletRequest req, @PathVariable Long id,
                                                             @RequestBody Map<String, Object> b) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Map<String, String> nomes = nomesDasLojas(r);
+        Map<String, String> nomes = escopoUsuarios(req);
+        if (nomes == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
         AppUser u = users.findById(id).orElse(null);
         List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
         if (u == null || !podeMexer(u, vs, nomes.keySet()))
@@ -409,9 +405,8 @@ public class RevendaController {
     @PostMapping("/usuarios/{id}/liberar-aparelho")
     @Transactional
     public ResponseEntity<Map<String, Object>> liberarAparelho(HttpServletRequest req, @PathVariable Long id) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Map<String, String> nomes = nomesDasLojas(r);
+        Map<String, String> nomes = escopoUsuarios(req);
+        if (nomes == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
         AppUser u = users.findById(id).orElse(null);
         List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
         if (u == null || !podeMexer(u, vs, nomes.keySet()))
@@ -430,9 +425,8 @@ public class RevendaController {
     @PostMapping("/usuarios/{id}/resetar-aparelho")
     @Transactional
     public ResponseEntity<Map<String, Object>> resetarAparelho(HttpServletRequest req, @PathVariable Long id) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Map<String, String> nomes = nomesDasLojas(r);
+        Map<String, String> nomes = escopoUsuarios(req);
+        if (nomes == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
         AppUser u = users.findById(id).orElse(null);
         List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
         if (u == null || !podeMexer(u, vs, nomes.keySet()))
@@ -449,9 +443,9 @@ public class RevendaController {
     @DeleteMapping("/usuarios/{id}")
     @Transactional
     public ResponseEntity<Map<String, Object>> removerUsuario(HttpServletRequest req, @PathVariable Long id) {
-        Revenda r = autorizar(req);
-        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
-        Set<String> meus = nomesDasLojas(r).keySet();
+        Map<String, String> escopo = escopoUsuarios(req);
+        if (escopo == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        Set<String> meus = escopo.keySet();
         AppUser u = users.findById(id).orElse(null);
         List<UserEmpresa> vs = u == null ? List.of() : vinculos.findByUserId(u.getId());
         if (u == null || !podeMexer(u, vs, meus))
@@ -604,6 +598,29 @@ public class RevendaController {
     }
 
     /** Loja(s) do revendedor: cnpj -> nome. */
+    /** Lojas que quem chamou pode gerenciar na aba Usuários: as da revenda logada, ou TODAS
+     *  quando é o master (DONO), que usa o mesmo painel. null = não autorizado. */
+    private Map<String, String> escopoUsuarios(HttpServletRequest req) {
+        Revenda r = autorizar(req);
+        if (r != null) return nomesDasLojas(r);
+        if (!master(req)) return null;
+        Map<String, String> nomes = new LinkedHashMap<>();
+        for (Loja l : lojas.findAll()) nomes.put(l.getCnpj(), l.getNome() == null ? "" : l.getNome());
+        return nomes;
+    }
+
+    /** Token do master (role DONO), o mesmo login do app. */
+    private boolean master(HttpServletRequest req) {
+        String h = req.getHeader("Authorization");
+        if (h == null || !h.startsWith("Bearer ")) return false;
+        try {
+            Claims c = jwt.parse(h.substring(7).trim());
+            return "DONO".equals(String.valueOf(c.get("role")));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Map<String, String> nomesDasLojas(Revenda r) {
         Map<String, String> nomes = new LinkedHashMap<>();
         for (Loja l : lojas.findByRevendaCodigoOrderByAtualizadoEmDesc(r.getCodigo())) {
