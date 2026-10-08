@@ -378,6 +378,17 @@ public class RevendaController {
         if (b.get("consultaPreco") instanceof Boolean cp) u.setConsultaPreco(cp);
         if (b.get("deviceLock") instanceof Boolean dl) u.setDeviceLock(dl);
         if (b.containsKey("permissoes")) u.setPermissoes(normalizarPermissoes(listaStr(b.get("permissoes"))));
+        if (b.containsKey("cnpjs")) {
+            // troca só as lojas que quem edita enxerga; vínculos com lojas de outra conta ficam
+            List<String> novos = cnpjsPedidos(b);
+            for (String c : novos)
+                if (!nomes.containsKey(c)) return ResponseEntity.status(403).body(ApiEnvelope.fail("Loja não é da sua revenda"));
+            long fora = u.getEmpresas().stream().filter(e -> !nomes.containsKey(e.getCnpj())).count();
+            if (novos.isEmpty() && fora == 0) return ResponseEntity.status(400).body(ApiEnvelope.fail("Escolha ao menos uma loja"));
+            u.getEmpresas().removeIf(e -> nomes.containsKey(e.getCnpj()) && !novos.contains(e.getCnpj()));
+            for (String c : novos)
+                if (u.getEmpresas().stream().noneMatch(e -> e.getCnpj().equals(c))) u.getEmpresas().add(new UserEmpresa(u, c));
+        }
         users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
     }
