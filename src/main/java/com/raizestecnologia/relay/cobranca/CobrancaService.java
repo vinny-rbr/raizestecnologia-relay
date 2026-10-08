@@ -328,6 +328,48 @@ public class CobrancaService {
         }, "revenda_ciclo_ativado");
     }
 
+    /** Situação de cobrança de uma loja de REVENDA, pro painel master:
+     *  tipo = cortesia | aguardando | teste | bloqueada | pago | apagar. null se não for de revenda. */
+    public java.util.Map<String, Object> situacaoRevenda(Loja l) {
+        if (l == null || l.getRevendaCodigo() == null) return null;
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        LocalDate hoje = LocalDate.now(BRT);
+        int dia = l.getDiaVencimento();
+        // parcela "da vez": o próximo dia 5 só conta quando abre (10 dias antes); antes disso vale o que já venceu
+        LocalDate venc = proximoVenc(hoje, dia);
+        if (hoje.isBefore(venc.minusDays(LIBERA_PAGAMENTO_DIAS))) venc = venc.minusMonths(1).withDayOfMonth(dia);
+        LocalDate pagaAte = l.getMensalidadePagaAte();
+        var ult = pagamentos.findByCnpjOrderByPagoEmDesc(l.getCnpj());
+        if (!ult.isEmpty() && ult.get(0).getPagoEm() != null) {
+            m.put("ultimoPagamentoEm", ult.get(0).getPagoEm().atZone(BRT).toLocalDate().toString());
+            m.put("ultimoPagamentoValor", ult.get(0).getValor());
+        }
+        String tipo;
+        if (l.isCortesia()) {
+            tipo = "cortesia";
+        } else if (!l.isRevendaAtivada()) {
+            tipo = "aguardando";
+        } else if (l.isBloqueada() && bloqueioPorPagamento(l)) {
+            tipo = "bloqueada";
+        } else if (pagaAte == null && l.getRevendaLiberadaAte() != null) {
+            tipo = "teste";
+            m.put("testeAte", l.getRevendaLiberadaAte().toString());
+        } else if (pagaAte != null && !pagaAte.isBefore(venc)) {
+            tipo = "pago";
+            m.put("proximoVencimento", proximoVenc(pagaAte.plusDays(1), dia).toString());
+        } else {
+            tipo = "apagar";
+            LocalDate v = pagaAte == null ? primeiroVenc(l.getAtivadaEm() == null ? hoje
+                    : l.getAtivadaEm().atZone(BRT).toLocalDate(), dia) : proximoVenc(pagaAte.plusDays(1), dia);
+            m.put("vencimento", v.toString());
+            m.put("bloqueiaEm", v.plusDays(TOLERANCIA_DIAS).toString());
+            m.put("valor", valorRevenda(l));
+        }
+        m.put("tipo", tipo);
+        m.put("pagaAte", pagaAte == null ? null : pagaAte.toString());
+        return m;
+    }
+
     /** Quanto a revenda paga agora por esta loja (R$30 ou o proporcional de R$20). */
     public static double valorRevenda(Loja l) {
         return l.getRevendaValorProximo() != null ? l.getRevendaValorProximo() : REVENDA_MENSALIDADE;
