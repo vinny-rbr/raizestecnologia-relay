@@ -265,6 +265,7 @@ public class AdminController {
             m.put("grupo", l == null ? null : l.getGrupo());
             m.put("sistema", l == null ? null : l.getSistema());
             m.put("cortesia", l != null && l.isCortesia());
+            m.put("recursos", l == null ? java.util.Set.of() : l.getRecursos());
             m.put("situacaoRevenda", cobrancas.situacaoRevenda(l));
             String revCod = l == null ? null : l.getRevendaCodigo();
             var rev = revCod == null ? null : revPorCodigo.get(revCod.toUpperCase());
@@ -403,6 +404,24 @@ public class AdminController {
         lojas.definirDiaVencimento(c, dia);
         registrarAcao(c, "loja_dia_vencimento", "Vencimento dia " + dia);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "diaVencimento", dia)));
+    }
+
+    /** POST /api/admin/lojas/{cnpj}/recursos {recurso, ativo} — libera Salao / Painel TV / Forca de vendas. */
+    @PostMapping("/lojas/{cnpj}/recursos")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirRecurso(@PathVariable String cnpj,
+                                                              @RequestBody(required = false) Map<String, Object> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        String rec = body == null ? null : String.valueOf(body.get("recurso"));
+        if (!com.raizestecnologia.relay.loja.Recursos.TODOS.contains(rec)) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Recurso invalido"));
+        }
+        boolean ativo = body.get("ativo") == Boolean.TRUE;
+        var atuais = lojas.definirRecurso(c, rec, ativo);
+        if (atuais == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja nao encontrada"));
+        registrarAcao(c, "loja_recurso", com.raizestecnologia.relay.loja.Recursos.nome(rec) + (ativo ? " ativado" : " desativado"));
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "recursos", atuais)));
     }
 
     /** POST /api/admin/lojas/{cnpj}/grupo  body: {"grupo": "..."} — organiza a loja num grupo (vazio = remove). */

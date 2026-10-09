@@ -253,6 +253,26 @@ public class RevendaController {
     }
 
     /** POST /api/revenda/lojas/{cnpj}/grupo — organiza a loja num grupo (vazio = remove). Só as lojas do revendedor. */
+    /** POST /api/revenda/lojas/{cnpj}/recursos {recurso, ativo} — libera Salao / Painel TV / Forca de vendas. */
+    @PostMapping("/lojas/{cnpj}/recursos")
+    public ResponseEntity<Map<String, Object>> recurso(HttpServletRequest req, @PathVariable String cnpj,
+                                                       @RequestBody(required = false) Map<String, Object> body) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        Loja l = lojas.findById(c).orElse(null);
+        if (l == null || !r.getCodigo().equals(l.getRevendaCodigo())) {
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        }
+        String rec = body == null ? null : String.valueOf(body.get("recurso"));
+        if (!com.raizestecnologia.relay.loja.Recursos.TODOS.contains(rec)) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail("Recurso inválido"));
+        }
+        l.setRecurso(rec, body.get("ativo") == Boolean.TRUE);
+        lojas.save(l);
+        return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
+    }
+
     @PostMapping("/lojas/{cnpj}/grupo")
     public ResponseEntity<Map<String, Object>> definirGrupo(HttpServletRequest req, @PathVariable String cnpj,
                                                             @RequestBody(required = false) Map<String, String> body) {
@@ -794,6 +814,7 @@ public class RevendaController {
         m.put("bloqueada", l.isBloqueada());
         m.put("grupo", l.getGrupo());
         m.put("sistema", l.getSistema());
+        m.put("recursos", l.getRecursos());
         // ciclo de R$30/mês que o revendedor paga ao dono
         m.put("mensalidade", com.raizestecnologia.relay.cobranca.CobrancaService.REVENDA_MENSALIDADE);
         // parcela "da vez": o próximo dia 5 só conta quando abre (10 dias antes); antes disso vale o que já venceu

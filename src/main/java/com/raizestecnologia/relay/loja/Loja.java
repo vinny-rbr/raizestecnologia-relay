@@ -111,6 +111,10 @@ public class Loja {
     @Column(name = "motivo_bloqueio", length = 200)
     private String motivoBloqueio;
 
+    /** Recursos extras liberados pelo master/revenda (salao,painel_tv,forca_vendas). null = nenhum. */
+    @Column(name = "recursos", length = 200)
+    private String recursos;
+
     public Loja() {}
 
     public Loja(String cnpj, String nome) {
@@ -175,6 +179,17 @@ public class Loja {
         if (i.endsWith("agente-lider.jar")) return "Lider";
         if (i.endsWith("agente-syspdv.jar")) return "SysPDV";
         return null;
+    }
+    public java.util.Set<String> getRecursos() {
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        if (recursos != null) for (String r : recursos.split(",")) if (!r.isBlank()) out.add(r.trim());
+        return out;
+    }
+    public boolean temRecurso(String r) { return getRecursos().contains(r); }
+    public void setRecurso(String r, boolean ativo) {
+        java.util.Set<String> s = getRecursos();
+        if (ativo) s.add(r); else s.remove(r);
+        this.recursos = s.isEmpty() ? null : String.join(",", s);
     }
     public boolean isCortesia() { return cortesia; }
     public void setCortesia(boolean v) { this.cortesia = v; }

@@ -119,6 +119,13 @@ public class RelayController {
             return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta funcao\"}");
         }
 
+        // Recursos extras (salao / forca de vendas) so com a liberacao do master/revenda na loja.
+        String recurso = com.raizestecnologia.relay.loja.Recursos.daRota(path);
+        if (recurso != null && !lojas.temRecurso(onlyDigits(empresa), recurso)) {
+            return json(403, "{\"success\":false,\"recursoDesativado\":true,\"message\":\""
+                    + escape(com.raizestecnologia.relay.loja.Recursos.nome(recurso)) + " nao esta ativado nesta loja\"}");
+        }
+
         AgentHub.Resposta r = hub.ask(empresa, request.getMethod(), path, query, body);
 
         // Auditoria da acao de escrita (contagem de estoque).

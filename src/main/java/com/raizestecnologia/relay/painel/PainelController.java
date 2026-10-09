@@ -64,6 +64,7 @@ public class PainelController {
     public ResponseEntity<Map<String, Object>> pedidos(@RequestHeader(value = "X-Empresa", required = false) String empresa) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         return ResponseEntity.ok(ApiEnvelope.ok(montar(cnpj, true)));
     }
 
@@ -73,6 +74,7 @@ public class PainelController {
                                                       @RequestBody(required = false) Map<String, Object> body) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         PainelPronto p = prontos.findByCnpjAndIdAtendimento(cnpj, id).orElseGet(() -> new PainelPronto(cnpj, id));
         // nome/numero: do que o app mandou, senao do ultimo retrato do agente
         Map<String, Object> at = abertoPorId(cnpj, id);
@@ -91,6 +93,7 @@ public class PainelController {
                                                       @PathVariable long id) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         prontos.findByCnpjAndIdAtendimento(cnpj, id).ifPresent(prontos::delete);
         return ResponseEntity.ok(ApiEnvelope.ok(montar(cnpj, false)));
     }
@@ -100,6 +103,7 @@ public class PainelController {
                                                         @PathVariable long id) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         prontos.findByCnpjAndIdAtendimento(cnpj, id).ifPresent(p -> {
             p.entregueEm = Instant.now();
             prontos.save(p);
@@ -112,6 +116,7 @@ public class PainelController {
                                                         @RequestBody(required = false) Map<String, Object> body) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         String codigo = body == null || body.get("codigo") == null ? "" : String.valueOf(body.get("codigo")).replaceAll("\\D", "");
         PainelTv tv = codigo.length() == 6 ? tvs.findFirstByCodigoAndCnpjIsNull(codigo).orElse(null) : null;
         if (tv == null) {
@@ -127,6 +132,7 @@ public class PainelController {
     public ResponseEntity<Map<String, Object>> listarTvs(@RequestHeader(value = "X-Empresa", required = false) String empresa) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         List<Map<String, Object>> out = new ArrayList<>();
         for (PainelTv t : tvs.findByCnpjOrderByCriadoEm(cnpj)) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -144,6 +150,7 @@ public class PainelController {
                                                         @PathVariable String token) {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
+        if (!ativo(cnpj)) return desativado();
         tvs.findById(token).filter(t -> cnpj.equals(t.cnpj)).ifPresent(tvs::delete);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("desligada", true)));
     }
@@ -177,6 +184,10 @@ public class PainelController {
             return ResponseEntity.ok(ApiEnvelope.ok(out));
         }
         out.put("ligada", true);
+        if (!ativo(tv.cnpj)) {
+            out.put("desativado", true);
+            return ResponseEntity.ok(ApiEnvelope.ok(out));
+        }
         if (lojas.estaBloqueada(tv.cnpj)) {
             out.put("bloqueada", true);
             return ResponseEntity.ok(ApiEnvelope.ok(out));
@@ -286,6 +297,15 @@ public class PainelController {
         if (!pode && p.isRevenda()) pode = lojas.cnpjsDaRevenda(p.revendaCodigo()).contains(cnpj);
         if (!pode || lojas.estaBloqueada(cnpj)) return null;
         return cnpj;
+    }
+
+    /** Painel TV liberado nesta loja pelo master/revenda? */
+    private boolean ativo(String cnpj) {
+        return lojas.temRecurso(cnpj, com.raizestecnologia.relay.loja.Recursos.PAINEL_TV);
+    }
+
+    private static ResponseEntity<Map<String, Object>> desativado() {
+        return ResponseEntity.status(403).body(ApiEnvelope.fail("Painel TV não está ativado nesta loja"));
     }
 
     private static ResponseEntity<Map<String, Object>> negado() {

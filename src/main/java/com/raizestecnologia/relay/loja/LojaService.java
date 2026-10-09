@@ -277,6 +277,23 @@ public class LojaService {
         return repo.findById(c).map(Loja::isBloqueada).orElse(false);
     }
 
+    /** Recurso extra (Recursos.*) liberado nesta loja pelo master/revenda. */
+    public boolean temRecurso(String cnpj, String recurso) {
+        String c = norm(cnpj);
+        if (c.isBlank()) return false;
+        return repo.findById(c).map(l -> l.temRecurso(recurso)).orElse(false);
+    }
+
+    /** Liga/desliga um recurso; devolve os recursos atuais (null se a loja nao existe). */
+    public java.util.Set<String> definirRecurso(String cnpj, String recurso, boolean ativo) {
+        String c = norm(cnpj);
+        Loja l = repo.findById(c).orElse(null);
+        if (l == null) return null;
+        l.setRecurso(recurso, ativo);
+        repo.save(l);
+        return l.getRecursos();
+    }
+
     /** Motivo do bloqueio (ou "" se nao houver). */
     public String motivo(String cnpj) {
         String c = norm(cnpj);
