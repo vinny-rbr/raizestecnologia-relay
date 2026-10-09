@@ -104,11 +104,30 @@ public class PainelController {
         String cnpj = loja(empresa);
         if (cnpj == null) return negado();
         if (!ativo(cnpj)) return desativado();
-        prontos.findByCnpjAndIdAtendimento(cnpj, id).ifPresent(p -> {
-            p.entregueEm = Instant.now();
-            prontos.save(p);
+        PainelPronto p = prontos.findByCnpjAndIdAtendimento(cnpj, id).orElseGet(() -> {
+            PainelPronto n = new PainelPronto(cnpj, id);
+            n.prontoEm = Instant.now();
+            return n;
         });
-        return ResponseEntity.ok(ApiEnvelope.ok(montar(cnpj, false)));
+        p.entregueEm = Instant.now();
+        prontos.save(p);
+        // fecha o atendimento no caixa do LinkPro (so se estiver pago; senao o agente diz o motivo)
+        Map<String, Object> fechamento = new LinkedHashMap<>();
+        AgentHub.Resposta r = hub.ask(cnpj, "POST", "/api/salao/atendimento/" + id + "/finalizar", "", "{}");
+        try {
+            JsonNode j = mapper.readTree(r.body());
+            boolean ok = r.status() == 200 && j.path("success").asBoolean(false);
+            fechamento.put("fechado", ok);
+            fechamento.put("mensagem", ok ? "Fechado no caixa do LinkPro (venda " + j.path("data").path("vendaCodigo").asText() + ")"
+                    : r.status() == 404 ? "Atualize o agente da loja para fechar no LinkPro" : j.path("message").asText("Não fechou no LinkPro"));
+        } catch (Exception e) {
+            fechamento.put("fechado", false);
+            fechamento.put("mensagem", "Não fechou no LinkPro");
+        }
+        cache.remove(cnpj);
+        Map<String, Object> out = montar(cnpj, false);
+        out.put("fechamento", fechamento);
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
     @PostMapping("/api/painel/tv/conectar")
@@ -226,6 +245,13 @@ public class PainelController {
             m.put("nome", p.nome == null ? "" : p.nome);
             m.put("prontoEm", p.prontoEm.toString());
             m.put("segundos", Duration.between(p.prontoEm, agora).getSeconds());
+            for (Map<String, Object> a : ab.lista) {
+                if (p.idAtendimento.equals(toLong(a.get("id"))) && a.containsKey("pago")) {
+                    m.put("pago", a.get("pago"));
+                    m.put("valor", a.get("valor"));
+                    m.put("valorPago", a.get("valorPago"));
+                }
+            }
             prontosOut.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -257,6 +283,11 @@ public class PainelController {
                     m.put("mesa", n.path("mesa").isNull() || n.path("mesa").isMissingNode() ? null : n.path("mesa").asText());
                     m.put("abertura", n.path("abertura").asText(""));
                     m.put("minutos", n.path("minutos").asInt());
+                    if (n.has("pago")) {
+                        m.put("pago", n.path("pago").asBoolean());
+                        m.put("valor", n.path("valor").asDouble());
+                        m.put("valorPago", n.path("valorPago").asDouble());
+                    }
                     nova.add(m);
                 }
                 lista = nova;
