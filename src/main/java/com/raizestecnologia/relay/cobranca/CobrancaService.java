@@ -105,6 +105,8 @@ public class CobrancaService {
         }
         String descricao = "Meu Giro - " + est.item();
         LocalDate venc = LocalDate.parse(est.vencimento());
+        // ja vencida: o Asaas nao aceita vencimento no passado, entao vence em 3 dias
+        if (venc.isBefore(LocalDate.now(BRT))) venc = LocalDate.now(BRT).plusDays(3);
         AsaasClient.Cobranca cob;
         try {
             cob = asaas.criarCobranca(cust, est.valor(), venc, descricao);
