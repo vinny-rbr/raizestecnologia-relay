@@ -406,6 +406,38 @@ public class AdminController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "diaVencimento", dia)));
     }
 
+    /**
+     * POST /api/admin/pagar-lote {cnpjs:[...]} — o master gera UM boleto/Pix (Asaas) somando as lojas
+     * marcadas (so venda direta: loja de revenda e cobrada da revenda). Quando pago, o webhook libera.
+     */
+    @PostMapping("/pagar-lote")
+    public ResponseEntity<Map<String, Object>> pagarLote(@RequestBody(required = false) Map<String, Object> body) {
+        java.util.List<String> cnpjs = new java.util.ArrayList<>();
+        if (body != null && body.get("cnpjs") instanceof java.util.List<?> lista) {
+            for (Object o : lista) {
+                String c = normalizeCnpj(o == null ? null : String.valueOf(o));
+                if (c == null) continue;
+                var l = lojas.obter(c).orElse(null);
+                if (l != null && (l.getRevendaCodigo() == null || l.getRevendaCodigo().isBlank()) && !l.isCortesia()) cnpjs.add(c);
+            }
+        }
+        if (cnpjs.isEmpty()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Selecione ao menos uma loja de venda direta"));
+        try {
+            var r = cobrancas.gerarLote(cnpjs, null);
+            for (String c : cnpjs) registrarAcao(c, "boleto_master", "Boleto/Pix gerado pelo master: R$ " + r.valor());
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("linkPagamento", r.linkPagamento() == null ? "" : r.linkPagamento());
+            out.put("valor", r.valor());
+            out.put("vencimento", r.vencimento());
+            out.put("lojas", cnpjs.size());
+            return ResponseEntity.ok(ApiEnvelope.ok(out));
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return ResponseEntity.status(400).body(ApiEnvelope.fail(e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body(ApiEnvelope.fail("Falha ao gerar pagamento: " + e.getMessage()));
+        }
+    }
+
     /** POST /api/admin/lojas/{cnpj}/recursos {recurso, ativo} — libera Salao / Painel TV / Forca de vendas. */
     @PostMapping("/lojas/{cnpj}/recursos")
     @Transactional
