@@ -93,6 +93,10 @@ public class AppUser {
     @Column(name = "senha_pendente_em")
     private Instant senhaPendenteEm;
 
+    // Logins (tokens) emitidos antes disso nao valem mais. Muda sozinho quando a senha e trocada.
+    @Column(name = "tokens_validos_desde")
+    private Instant tokensValidosDesde;
+
     @Column(name = "criado_em")
     private Instant criadoEm = Instant.now();
 
@@ -136,7 +140,19 @@ public class AppUser {
     public void setRevendaId(Long revendaId) { this.revendaId = revendaId; }
 
     public String getSenhaHash() { return senhaHash; }
-    public void setSenhaHash(String senhaHash) { this.senhaHash = senhaHash; }
+    /**
+     * Troca o hash da senha. Se for TROCA (ja tinha senha e mudou), os logins feitos antes
+     * deixam de valer: o JwtAuthFilter recusa token emitido antes de tokensValidosDesde.
+     */
+    public void setSenhaHash(String senhaHash) {
+        if (this.senhaHash != null && senhaHash != null && !this.senhaHash.equals(senhaHash)) {
+            this.tokensValidosDesde = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        }
+        this.senhaHash = senhaHash;
+    }
+
+    public Instant getTokensValidosDesde() { return tokensValidosDesde; }
+    public void setTokensValidosDesde(Instant tokensValidosDesde) { this.tokensValidosDesde = tokensValidosDesde; }
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }

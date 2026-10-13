@@ -79,6 +79,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      * a sessao antiga cai (nao autentica -> 401). Sem sessao unica, passa sempre.
      */
     private boolean sessaoValida(AppUser user, Claims claims) {
+        // Senha trocada: login feito antes da troca nao vale mais (todos os aparelhos caem).
+        java.time.Instant desde = user.getTokensValidosDesde();
+        if (desde != null) {
+            java.util.Date iat = claims.getIssuedAt();
+            if (iat == null || iat.toInstant().isBefore(desde)) return false;
+        }
         if (!user.isSessaoUnica()) return true;
         Object sid = claims.get("sid");
         return sid != null && sid.equals(user.getSessaoId());
