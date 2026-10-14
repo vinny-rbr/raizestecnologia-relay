@@ -21,7 +21,7 @@ public class UserEmpresa {
     @JoinColumn(name = "user_id", nullable = false)
     private AppUser user;
 
-    @Column(name = "cnpj", length = 14, nullable = false)
+    @Column(name = "cnpj", length = 20, nullable = false)
     private String cnpj;
 
     /** Usuario do sistema da loja (ex.: id do usuario no LinkPro) ligado a este usuario nesta loja:
