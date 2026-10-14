@@ -48,6 +48,9 @@ public final class Modulos {
             return Set.of("produtos", "contagem");
         }
 
+        // Entrada de nota (estoque + contas a pagar): so quem tem Produtos
+        if (p.startsWith("/api/entrada-nota")) return Set.of("produtos");
+
         if (p.startsWith("/api/dashboard")) return Set.of("dashboard");
         if (p.startsWith("/api/pessoas")) return Set.of("pessoas");
         if (p.startsWith("/api/vendas")) return Set.of("vendas");
