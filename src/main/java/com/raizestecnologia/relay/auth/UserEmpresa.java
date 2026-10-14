@@ -24,6 +24,14 @@ public class UserEmpresa {
     @Column(name = "cnpj", length = 14, nullable = false)
     private String cnpj;
 
+    /** Usuario do sistema da loja (ex.: id do usuario no LinkPro) ligado a este usuario nesta loja:
+     *  o que ele grava pelo app fica no nome dele no sistema. null = sem vinculo. */
+    @Column(name = "usuario_sistema_id")
+    private Long usuarioSistemaId;
+
+    @Column(name = "usuario_sistema_nome", length = 120)
+    private String usuarioSistemaNome;
+
     public UserEmpresa() {}
 
     public UserEmpresa(AppUser user, String cnpj) {
@@ -39,4 +47,10 @@ public class UserEmpresa {
 
     public String getCnpj() { return cnpj; }
     public void setCnpj(String cnpj) { this.cnpj = cnpj; }
+
+    public Long getUsuarioSistemaId() { return usuarioSistemaId; }
+    public void setUsuarioSistemaId(Long usuarioSistemaId) { this.usuarioSistemaId = usuarioSistemaId; }
+
+    public String getUsuarioSistemaNome() { return usuarioSistemaNome; }
+    public void setUsuarioSistemaNome(String usuarioSistemaNome) { this.usuarioSistemaNome = usuarioSistemaNome; }
 }

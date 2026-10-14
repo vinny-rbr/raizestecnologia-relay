@@ -369,6 +369,7 @@ public class RevendaController {
         if (b.get("consultaPreco") instanceof Boolean cp) u.setConsultaPreco(cp);
         u.setSenhaProvisoria(true); // 1o acesso: o usuario troca a senha
         for (String c : cnpjs) u.getEmpresas().add(new UserEmpresa(u, c));
+        aplicarUsuariosSistema(u, b, nomes);
         AppUser saved = users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(saved, vinculos.findByUserId(saved.getId()), nomes)));
     }
@@ -409,6 +410,7 @@ public class RevendaController {
             for (String c : novos)
                 if (u.getEmpresas().stream().noneMatch(e -> e.getCnpj().equals(c))) u.getEmpresas().add(new UserEmpresa(u, c));
         }
+        aplicarUsuariosSistema(u, b, nomes);
         users.save(u);
         return ResponseEntity.ok(ApiEnvelope.ok(usuarioJson(u, vinculos.findByUserId(u.getId()), nomes)));
     }
@@ -486,6 +488,49 @@ public class RevendaController {
             return ResponseEntity.status(409).body(ApiEnvelope.fail("Esse usuário também está em lojas de outra conta; não dá pra excluir por aqui."));
         users.deleteById(id);
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("ok", true)));
+    }
+
+    /**
+     * GET /api/revenda/lojas/{cnpj}/usuarios-sistema — usuarios cadastrados no sistema da loja
+     * (ex.: LinkPro), lidos pelo agente, pra ligar cada usuario do app ao dele no sistema.
+     */
+    @GetMapping("/lojas/{cnpj}/usuarios-sistema")
+    public ResponseEntity<String> usuariosSistema(HttpServletRequest req, @PathVariable String cnpj) {
+        Map<String, String> nomes = escopoUsuarios(req);
+        String c = cnpj.replaceAll("\\D", "");
+        if (nomes == null || !nomes.containsKey(c))
+            return ResponseEntity.status(403).header("Content-Type", "application/json")
+                    .body("{\"success\":false,\"message\":\"Loja não é da sua revenda\"}");
+        AgentHub.Resposta r = hub.ask(c, "GET", "/api/usuarios-sistema", "", null);
+        String body = r.status() == 404
+                ? "{\"success\":false,\"message\":\"O sistema dessa loja não tem essa opção (atualize o agente)\"}"
+                : r.body();
+        return ResponseEntity.status(r.status()).header("Content-Type", "application/json").body(body);
+    }
+
+    /**
+     * Liga o usuario a um usuario do sistema em cada loja: "usuariosSistema": {cnpj: {id, nome} | null}.
+     * So mexe nas lojas da revenda que vieram no mapa.
+     */
+    @SuppressWarnings("unchecked")
+    private static void aplicarUsuariosSistema(AppUser u, Map<String, Object> b, Map<String, String> nomes) {
+        if (!(b.get("usuariosSistema") instanceof Map<?, ?> mapa)) return;
+        for (UserEmpresa e : u.getEmpresas()) {
+            if (!nomes.containsKey(e.getCnpj()) || !mapa.containsKey(e.getCnpj())) continue;
+            Object v = mapa.get(e.getCnpj());
+            Long id = null;
+            String nome = null;
+            if (v instanceof Map<?, ?> m && m.get("id") != null) {
+                try {
+                    id = Long.valueOf(String.valueOf(m.get("id")).replaceAll("\\D", ""));
+                } catch (NumberFormatException ignored) {
+                }
+                nome = m.get("nome") == null ? null : String.valueOf(m.get("nome"));
+                if (nome != null && nome.length() > 120) nome = nome.substring(0, 120);
+            }
+            e.setUsuarioSistemaId(id);
+            e.setUsuarioSistemaNome(id == null ? null : nome);
+        }
     }
 
     // ---- Solicitacoes (pedidos de troca de senha feitos no app) -------------
@@ -678,12 +723,14 @@ public class RevendaController {
     }
 
     private Map<String, Object> usuarioJson(AppUser u, List<UserEmpresa> vs, Map<String, String> nomes) {
-        List<Map<String, String>> empresas = new ArrayList<>();
+        List<Map<String, Object>> empresas = new ArrayList<>();
         for (UserEmpresa v : vs) {
             if (!nomes.containsKey(v.getCnpj())) continue; // só as lojas da revenda
-            Map<String, String> e = new LinkedHashMap<>();
+            Map<String, Object> e = new LinkedHashMap<>();
             e.put("cnpj", v.getCnpj());
             e.put("nome", nomes.getOrDefault(v.getCnpj(), ""));
+            e.put("usuarioSistemaId", v.getUsuarioSistemaId());
+            e.put("usuarioSistemaNome", v.getUsuarioSistemaNome() == null ? "" : v.getUsuarioSistemaNome());
             empresas.add(e);
         }
         Map<String, Object> m = new LinkedHashMap<>();

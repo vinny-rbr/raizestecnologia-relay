@@ -27,9 +27,11 @@ public class AgentHub {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final ApplicationEventPublisher publisher;
+    private final com.raizestecnologia.relay.auth.UserEmpresaRepository vinculos;
 
-    public AgentHub(ApplicationEventPublisher publisher) {
+    public AgentHub(ApplicationEventPublisher publisher, com.raizestecnologia.relay.auth.UserEmpresaRepository vinculos) {
         this.publisher = publisher;
+        this.vinculos = vinculos;
     }
 
     // cnpj -> sessao do agente da loja
@@ -80,6 +82,17 @@ public class AgentHub {
         if (f != null) f.complete(new Resposta(status, body));
     }
 
+    /** Usuario do sistema da loja ligado a quem pediu (painel da revenda > Usuarios), ou null. */
+    private Long usuarioSistema(com.raizestecnologia.relay.auth.RelayPrincipal quem, String cnpj) {
+        if (quem == null || quem.userId() == null) return null;
+        try {
+            return vinculos.findFirstByUserIdAndCnpj(Long.valueOf(quem.userId()), cnpj.replaceAll("\\D", ""))
+                    .map(com.raizestecnologia.relay.auth.UserEmpresa::getUsuarioSistemaId).orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Envia uma requisicao ao agente da loja e aguarda a resposta (com timeout). */
     public Resposta ask(String cnpj, String method, String path, String query, String body) {
         WebSocketSession s = agents.get(cnpj);
@@ -100,6 +113,11 @@ public class AgentHub {
             // quem pediu (aparece no log do agente: "fulano abriu Vendas")
             var quem = com.raizestecnologia.relay.auth.CurrentUser.get();
             if (quem != null && quem.email() != null) req.put("user", quem.email());
+            // gravacao: o usuario do sistema da loja ligado a quem pediu (o agente grava no nome dele)
+            if ("POST".equalsIgnoreCase(method)) {
+                Long us = usuarioSistema(quem, cnpj);
+                if (us != null) req.put("usuarioSistema", us);
+            }
             synchronized (s) {
                 s.sendMessage(new TextMessage(mapper.writeValueAsString(req)));
             }
