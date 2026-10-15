@@ -81,7 +81,9 @@ public class SecurityConfig {
                 // tela de mesas servida pelo agente na rede da loja (modo local): pega o passe aqui
                 "http://192.168.*:[*]",
                 "http://10.*:[*]",
-                "http://172.*:[*]"));
+                "http://172.*:[*]",
+                // ...e pelo NOME do computador do agente (programa Meu Giro Mesas), porta do agente
+                "http://*:[8081]"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("*"));
