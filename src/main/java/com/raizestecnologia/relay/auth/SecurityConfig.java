@@ -77,7 +77,11 @@ public class SecurityConfig {
                 "https://*.vercel.app",
                 "https://vinnytecnologia.com.br",
                 "https://www.vinnytecnologia.com.br",
-                "http://localhost:*"));
+                "http://localhost:*",
+                // tela de mesas servida pelo agente na rede da loja (modo local): pega o passe aqui
+                "http://192.168.*:[*]",
+                "http://10.*:[*]",
+                "http://172.*:[*]"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("*"));
