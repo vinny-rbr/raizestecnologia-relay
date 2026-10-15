@@ -41,6 +41,12 @@ public class AgentHub {
     // requestId -> future aguardando a resposta do agente
     private final Map<String, CompletableFuture<Resposta>> pending = new ConcurrentHashMap<>();
 
+    // Modo HTTPS: agente numa rede que derruba o WebSocket pergunta por aqui (POST /agent/poll) se tem
+    // pedido. Enquanto ele estiver perguntando, os pedidos dessa loja vão pela fila (não pelo WebSocket).
+    private final Map<String, java.util.concurrent.LinkedBlockingQueue<String>> filas = new ConcurrentHashMap<>();
+    private final Map<String, Long> ultimoPoll = new ConcurrentHashMap<>();
+    private static final long POLL_VIVO_MS = 15000;
+
     public record Empresa(String cnpj, String nome) {}
     public record Resposta(int status, String body) {}
 
@@ -61,19 +67,61 @@ public class AgentHub {
         }
         if (cnpj != null) {
             agents.remove(cnpj);
-            publisher.publishEvent(new AgentDisconnectedEvent(cnpj, names.getOrDefault(cnpj, "")));
+            // seguindo pelo modo HTTPS: a loja continua online
+            if (!pollVivo(cnpj)) publisher.publishEvent(new AgentDisconnectedEvent(cnpj, names.getOrDefault(cnpj, "")));
         }
     }
 
     public List<Empresa> empresas() {
-        return agents.keySet().stream()
-                .map(cnpj -> new Empresa(cnpj, names.getOrDefault(cnpj, "")))
-                .toList();
+        java.util.Set<String> todas = new java.util.LinkedHashSet<>(agents.keySet());
+        for (String c : ultimoPoll.keySet()) if (pollVivo(c)) todas.add(c);
+        return todas.stream().map(cnpj -> new Empresa(cnpj, names.getOrDefault(cnpj, ""))).toList();
     }
 
     public boolean online(String cnpj) {
         WebSocketSession s = agents.get(cnpj);
-        return s != null && s.isOpen();
+        return (s != null && s.isOpen()) || pollVivo(cnpj);
+    }
+
+    private boolean pollVivo(String cnpj) {
+        Long t = ultimoPoll.get(cnpj);
+        return t != null && System.currentTimeMillis() - t < POLL_VIVO_MS;
+    }
+
+    /**
+     * Agente em modo HTTPS perguntando se tem pedido: espera até esperaMs pelo primeiro e devolve
+     * todos os da fila (JSON de cada "req", igual ao do WebSocket).
+     */
+    public List<String> poll(String cnpj, String nome, String revenda, long esperaMs) throws InterruptedException {
+        boolean estava = online(cnpj);
+        ultimoPoll.put(cnpj, System.currentTimeMillis());
+        if (nome != null && !nome.isBlank()) names.put(cnpj, nome);
+        if (!estava) {
+            publisher.publishEvent(new AgentConnectedEvent(cnpj, names.getOrDefault(cnpj, ""),
+                    revenda == null || revenda.isBlank() ? null : revenda.trim().toUpperCase()));
+        }
+        var fila = filas.computeIfAbsent(cnpj, k -> new java.util.concurrent.LinkedBlockingQueue<>());
+        List<String> out = new java.util.ArrayList<>();
+        String primeiro = fila.poll(esperaMs, TimeUnit.MILLISECONDS);
+        if (primeiro != null) {
+            out.add(primeiro);
+            fila.drainTo(out);
+        }
+        ultimoPoll.put(cnpj, System.currentTimeMillis());
+        return out;
+    }
+
+    /** Loja que estava no modo HTTPS e parou de perguntar (e sem WebSocket): ficou offline. */
+    @Scheduled(fixedDelay = 10000)
+    public void limparPolls() {
+        for (var e : ultimoPoll.entrySet()) {
+            String cnpj = e.getKey();
+            if (pollVivo(cnpj)) continue;
+            ultimoPoll.remove(cnpj);
+            filas.remove(cnpj);
+            WebSocketSession s = agents.get(cnpj);
+            if (s == null || !s.isOpen()) publisher.publishEvent(new AgentDisconnectedEvent(cnpj, names.getOrDefault(cnpj, "")));
+        }
     }
 
     /** Recebe a resposta vinda do agente e completa o future correspondente. */
@@ -96,7 +144,8 @@ public class AgentHub {
     /** Envia uma requisicao ao agente da loja e aguarda a resposta (com timeout). */
     public Resposta ask(String cnpj, String method, String path, String query, String body) {
         WebSocketSession s = agents.get(cnpj);
-        if (s == null || !s.isOpen()) {
+        boolean porFila = pollVivo(cnpj);
+        if (!porFila && (s == null || !s.isOpen())) {
             return new Resposta(503, "{\"success\":false,\"message\":\"Loja offline (agente nao conectado)\"}");
         }
         String id = UUID.randomUUID().toString();
@@ -118,8 +167,12 @@ public class AgentHub {
                 Long us = usuarioSistema(quem, cnpj);
                 if (us != null) req.put("usuarioSistema", us);
             }
-            synchronized (s) {
-                s.sendMessage(new TextMessage(mapper.writeValueAsString(req)));
+            if (porFila) {
+                filas.computeIfAbsent(cnpj, k -> new java.util.concurrent.LinkedBlockingQueue<>()).offer(mapper.writeValueAsString(req));
+            } else {
+                synchronized (s) {
+                    s.sendMessage(new TextMessage(mapper.writeValueAsString(req)));
+                }
             }
             return future.get(12, TimeUnit.SECONDS);
         } catch (Exception e) {
