@@ -85,8 +85,10 @@ public class CancelamentoController {
         return p.email();
     }
 
-    /** Vínculos (usuário x loja) que podem aprovar: ligados a um usuário do LinkPro com permissão de cancelar. */
-    private List<UserEmpresa> aprovadores(String loja) {
+    private record Aprovador(Long userId, String nome) {}
+
+    /** Usuários da loja que podem aprovar: vínculo ligado a um usuário do LinkPro com permissão de cancelar. */
+    private List<Aprovador> aprovadores(String loja) {
         Set<Long> autorizados = new HashSet<>();
         try {
             AgentHub.Resposta r = hub.ask(loja, "GET", "/api/salao/garcom/autorizadores", null, null);
@@ -94,11 +96,13 @@ public class CancelamentoController {
         } catch (Exception e) {
             log.warn("[cancelamento] não consegui a lista de quem autoriza na loja {}: {}", loja, e.getMessage());
         }
-        List<UserEmpresa> out = new ArrayList<>();
-        for (UserEmpresa v : vinculos.findByCnpj(loja)) {
-            if (v.getUsuarioSistemaId() == null || v.getUser() == null || !v.getUser().isAtivo()) continue;
-            if (!autorizados.isEmpty() && !autorizados.contains(v.getUsuarioSistemaId())) continue;
-            out.add(v);
+        List<Aprovador> out = new ArrayList<>();
+        Set<Long> ja = new HashSet<>();
+        for (Object[] v : vinculos.resumoPorCnpj(loja)) {
+            Long userId = (Long) v[0], us = (Long) v[1];
+            if (us == null || !Boolean.TRUE.equals(v[3])) continue;
+            if (!autorizados.isEmpty() && !autorizados.contains(us)) continue;
+            if (ja.add(userId)) out.add(new Aprovador(userId, v[2] == null ? "" : String.valueOf(v[2])));
         }
         return out;
     }
@@ -137,8 +141,8 @@ public class CancelamentoController {
         String descricao = String.valueOf(body.getOrDefault("descricao", "")).trim();
         Object acao = body.get("acao");
         if (descricao.isBlank() || !(acao instanceof Map)) return ResponseEntity.badRequest().body(ApiEnvelope.fail("Pedido incompleto."));
-        List<UserEmpresa> quem = aprovadores(loja);
-        quem.removeIf(v -> String.valueOf(v.getUser().getId()).equals(p.userId()));
+        List<Aprovador> quem = aprovadores(loja);
+        quem.removeIf(v -> String.valueOf(v.userId()).equals(p.userId()));
         if (quem.isEmpty()) {
             return ResponseEntity.badRequest().body(ApiEnvelope.fail(
                     "Ninguém pra aprovar: ligue no painel um usuário do app a um usuário do LinkPro com permissão de cancelar."));
@@ -153,13 +157,13 @@ public class CancelamentoController {
         s.setAcao(mapper.writeValueAsString(acao));
         repo.save(s);
         // push pra quem pode aprovar
-        List<Long> ids = quem.stream().map(v -> v.getUser().getId()).distinct().toList();
+        List<Long> ids = quem.stream().map(Aprovador::userId).toList();
         List<String> toks = tokens.findByUserIdIn(ids).stream().map(DeviceToken::getToken).toList();
         fcm.sendToTokens(toks, "Pedido de cancelamento" + (s.getLojaNome().isBlank() ? "" : " · " + s.getLojaNome()),
                 s.getSolicitanteNome() + " pediu: " + s.getDescricao(), Map.of("tipo", "cancelamento", "id", s.getId()));
         log.info("[cancelamento] {} pediu na loja {}: {} (push pra {} aparelho(s))", s.getSolicitanteNome(), loja, s.getDescricao(), toks.size());
         Map<String, Object> out = json(s);
-        out.put("aprovadores", quem.stream().map(v -> v.getUser().getNome()).distinct().toList());
+        out.put("aprovadores", quem.stream().map(Aprovador::nome).toList());
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
