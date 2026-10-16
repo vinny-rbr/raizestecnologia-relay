@@ -78,11 +78,22 @@ public class FcmSender {
     public void sendToTokens(List<String> toks, String titulo, String corpo, java.util.Map<String, String> dados) {
         if (messaging == null || toks == null || toks.isEmpty()) return;
         try {
-            MulticastMessage msg = MulticastMessage.builder()
+            MulticastMessage.Builder mb = MulticastMessage.builder()
                     .addAllTokens(toks)
                     .setNotification(Notification.builder().setTitle(titulo).setBody(corpo).build())
-                    .putAllData(dados == null ? java.util.Map.of() : dados)
-                    .build();
+                    .putAllData(dados == null ? java.util.Map.of() : dados);
+            // pedido de cancelamento: toque próprio (Android: canal "cancelamento" criado pelo app; iOS: cancelamento.caf)
+            if (dados != null && "cancelamento".equals(dados.get("tipo"))) {
+                mb.setAndroidConfig(com.google.firebase.messaging.AndroidConfig.builder()
+                        .setPriority(com.google.firebase.messaging.AndroidConfig.Priority.HIGH)
+                        .setNotification(com.google.firebase.messaging.AndroidNotification.builder()
+                                .setChannelId("cancelamento").setSound("cancelamento").build())
+                        .build());
+                mb.setApnsConfig(com.google.firebase.messaging.ApnsConfig.builder()
+                        .setAps(com.google.firebase.messaging.Aps.builder().setSound("cancelamento.caf").build())
+                        .build());
+            }
+            MulticastMessage msg = mb.build();
             BatchResponse resp = messaging.sendEachForMulticast(msg);
             log.info("[fcm] push enviado {}/{}", resp.getSuccessCount(), toks.size());
         } catch (Exception e) {
