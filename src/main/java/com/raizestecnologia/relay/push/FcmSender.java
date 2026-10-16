@@ -71,11 +71,17 @@ public class FcmSender {
 
     /** Envia uma notificacao para uma lista de tokens (ate 500). No-op se desabilitado/vazio. */
     public void sendToTokens(List<String> toks, String titulo, String corpo) {
+        sendToTokens(toks, titulo, corpo, java.util.Map.of());
+    }
+
+    /** Idem, com dados pro app abrir a tela certa ao tocar (ex.: tipo=cancelamento, id=...). */
+    public void sendToTokens(List<String> toks, String titulo, String corpo, java.util.Map<String, String> dados) {
         if (messaging == null || toks == null || toks.isEmpty()) return;
         try {
             MulticastMessage msg = MulticastMessage.builder()
                     .addAllTokens(toks)
                     .setNotification(Notification.builder().setTitle(titulo).setBody(corpo).build())
+                    .putAllData(dados == null ? java.util.Map.of() : dados)
                     .build();
             BatchResponse resp = messaging.sendEachForMulticast(msg);
             log.info("[fcm] push enviado {}/{}", resp.getSuccessCount(), toks.size());
