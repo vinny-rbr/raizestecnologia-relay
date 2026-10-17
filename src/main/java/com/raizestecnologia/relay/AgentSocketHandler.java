@@ -24,6 +24,8 @@ public class AgentSocketHandler extends TextWebSocketHandler {
     private final AgentHub hub;
     private final com.raizestecnologia.relay.loja.LojaService lojas;
     private final com.raizestecnologia.relay.loja.PasseLocalService passes;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.saude.SaudeService saude;
     private final String agentKey; // chave esperada dos agentes (env AGENT_KEY); vazio = auth desligada
     private final boolean enforce; // true = rejeita agente sem chave; false = so avisa (transicao)
 
@@ -73,6 +75,10 @@ public class AgentSocketHandler extends TextWebSocketHandler {
                     node.path("body").asText("{}"));
             case "ping" -> session.sendMessage(new TextMessage("{\"type\":\"pong\"}"));
             case "passes" -> enviarPasses(session); // agente pede de tempos em tempos (revogados atualizados)
+            case "evento" -> { // saúde da loja: algo aconteceu na rede (IP, impressora, conflito)
+                Object loja = session.getAttributes().get("loja");
+                if (loja != null) saude.registrar(String.valueOf(loja), node);
+            }
             default -> { /* ignora */ }
         }
     }

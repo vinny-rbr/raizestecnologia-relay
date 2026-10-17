@@ -72,6 +72,21 @@ public class AgentPollController {
         return ResponseEntity.ok(mapper.writeValueAsString(out));
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.saude.SaudeService saude;
+
+    /** POST /agent/evento — saúde da loja pelo modo HTTPS (mesma identificação do poll). */
+    @PostMapping("/evento")
+    public ResponseEntity<String> evento(@RequestBody String corpo) throws Exception {
+        JsonNode n = mapper.readTree(corpo);
+        String cnpj = n.path("cnpj").asText("");
+        if (cnpj.isBlank() || recusado(n)) return ResponseEntity.status(401).body("{\"success\":false}");
+        String inst = n.path("instalacao").asText("");
+        String chave = chaves.computeIfAbsent(cnpj + "|" + inst, k -> lojas.resolverChave(cnpj, n.path("nome").asText(""), inst));
+        saude.registrar(chave, n);
+        return ResponseEntity.ok("{\"success\":true}");
+    }
+
     @PostMapping("/res")
     public ResponseEntity<String> res(@RequestBody String corpo) throws Exception {
         JsonNode n = mapper.readTree(corpo);
