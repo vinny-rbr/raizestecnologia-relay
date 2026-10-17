@@ -72,13 +72,22 @@ public class SaudeService {
             String chave = corta(n.path("chave").asText(e.getTipo() + ":" + titulo), 200);
             e.setChave(chave);
             boolean repetido = !"ok".equals(e.getNivel())
-                    && repo.existsByLojaAndChaveAndPushTrueAndCriadoEmAfter(loja, chave, Instant.now().minus(SEM_REPETIR));
+                    && (repo.existsByLojaAndChaveAndPushTrueAndCriadoEmAfter(loja, chave, Instant.now().minus(SEM_REPETIR))
+                    || emResolucao(loja, chave));
             e.setPush(!repetido);
             repo.save(e);
             if (!repetido) avisarMaster(e);
         } catch (Exception ex) {
             log.warn("[saude] evento da loja {} não registrado: {}", loja, ex.getMessage());
         }
+    }
+
+    /** Alguém marcou "estou resolvendo" depois do último "voltou ao normal" desse problema: não avisa de novo. */
+    public boolean emResolucao(String loja, String chave) {
+        var marcado = repo.findTopByLojaAndChaveAndResolvendoTrueOrderByResolvendoEmDesc(loja, chave);
+        if (marcado.isEmpty()) return false;
+        var ok = repo.findTopByLojaAndChaveAndNivelOrderByCriadoEmDesc(loja, chave, "ok");
+        return ok.isEmpty() || ok.get().getCriadoEm().isBefore(marcado.get().getResolvendoEm());
     }
 
     private void avisarMaster(EventoLoja e) {

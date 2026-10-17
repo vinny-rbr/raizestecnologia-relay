@@ -53,6 +53,23 @@ public class EventoLoja {
     @Column(name = "criado_em", nullable = false)
     private Instant criadoEm = Instant.now();
 
+    /** Master marcou "estou resolvendo": não repete o aviso desse problema até ele se resolver. */
+    @Column(name = "resolvendo", nullable = false, columnDefinition = "boolean not null default false")
+    private boolean resolvendo;
+
+    @Column(name = "resolvendo_por", length = 120)
+    private String resolvendoPor;
+
+    @Column(name = "resolvendo_em")
+    private Instant resolvendoEm;
+
+    public boolean isResolvendo() { return resolvendo; }
+    public void setResolvendo(boolean r) { this.resolvendo = r; }
+    public String getResolvendoPor() { return resolvendoPor; }
+    public void setResolvendoPor(String p) { this.resolvendoPor = p; }
+    public Instant getResolvendoEm() { return resolvendoEm; }
+    public void setResolvendoEm(Instant e) { this.resolvendoEm = e; }
+
     public Long getId() { return id; }
     public String getLoja() { return loja; }
     public void setLoja(String loja) { this.loja = loja; }

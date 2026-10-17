@@ -13,4 +13,8 @@ public interface EventoLojaRepository extends JpaRepository<EventoLoja, Long> {
     List<EventoLoja> findByLojaOrderByCriadoEmDesc(String loja, Pageable p);
 
     boolean existsByLojaAndChaveAndPushTrueAndCriadoEmAfter(String loja, String chave, Instant depois);
+
+    java.util.Optional<EventoLoja> findTopByLojaAndChaveAndResolvendoTrueOrderByResolvendoEmDesc(String loja, String chave);
+
+    java.util.Optional<EventoLoja> findTopByLojaAndChaveAndNivelOrderByCriadoEmDesc(String loja, String chave, String nivel);
 }
