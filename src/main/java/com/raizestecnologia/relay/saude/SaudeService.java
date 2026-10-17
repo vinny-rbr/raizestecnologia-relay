@@ -18,13 +18,13 @@ import java.util.Map;
 
 /**
  * Recebe os eventos de rede que os agentes mandam (saúde das lojas), guarda no histórico e avisa o master (DONO)
- * por push. O mesmo problema (mesma chave) só gera push de novo depois de 30 min; "voltou ao normal" sempre avisa.
+ * por push. O mesmo problema (mesma chave) só gera push de novo depois de 5 min; "voltou ao normal" sempre avisa.
  */
 @Service
 public class SaudeService {
 
     private static final Logger log = LoggerFactory.getLogger(SaudeService.class);
-    private static final Duration SEM_REPETIR = Duration.ofMinutes(30);
+    private static final Duration SEM_REPETIR = Duration.ofMinutes(5);
 
     private final EventoLojaRepository repo;
     private final LojaService lojas;
