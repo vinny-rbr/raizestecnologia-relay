@@ -82,15 +82,19 @@ public class FcmSender {
                     .addAllTokens(toks)
                     .setNotification(Notification.builder().setTitle(titulo).setBody(corpo).build())
                     .putAllData(dados == null ? java.util.Map.of() : dados);
-            // pedido de cancelamento: toque próprio (Android: canal "cancelamento" criado pelo app; iOS: cancelamento.caf)
-            if (dados != null && "cancelamento".equals(dados.get("tipo"))) {
+            // toque próprio por tipo: pedido de cancelamento e saúde das lojas
+            // (Android: canal criado pelo app com o som de res/raw; iOS: <som>.caf no app)
+            String tipo = dados == null ? null : dados.get("tipo");
+            String[] canalSom = "cancelamento".equals(tipo) ? new String[]{"cancelamento", "cancelamento"}
+                    : "saude".equals(tipo) ? new String[]{"saude", "alerta"} : null;
+            if (canalSom != null) {
                 mb.setAndroidConfig(com.google.firebase.messaging.AndroidConfig.builder()
                         .setPriority(com.google.firebase.messaging.AndroidConfig.Priority.HIGH)
                         .setNotification(com.google.firebase.messaging.AndroidNotification.builder()
-                                .setChannelId("cancelamento").setSound("cancelamento").build())
+                                .setChannelId(canalSom[0]).setSound(canalSom[1]).build())
                         .build());
                 mb.setApnsConfig(com.google.firebase.messaging.ApnsConfig.builder()
-                        .setAps(com.google.firebase.messaging.Aps.builder().setSound("cancelamento.caf").build())
+                        .setAps(com.google.firebase.messaging.Aps.builder().setSound(canalSom[1] + ".caf").build())
                         .build());
             }
             MulticastMessage msg = mb.build();
