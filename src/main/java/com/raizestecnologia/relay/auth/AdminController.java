@@ -28,6 +28,8 @@ public class AdminController {
     private final UserEmpresaRepository vinculos;
     private final PasswordEncoder encoder;
     private final AgentHub hub;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.loja.VersaoAgentes versoesAgente;
     private final com.raizestecnologia.relay.audit.AuditoriaRepository auditoria;
     private final com.raizestecnologia.relay.loja.LojaService lojas;
     private final com.raizestecnologia.relay.cobranca.CobrancaService cobrancas;
@@ -246,6 +248,7 @@ public class AdminController {
 
         Map<String, com.raizestecnologia.relay.revenda.Revenda> revPorCodigo = revendasPorCodigo();
 
+        Integer versaoAtual = versoesAgente.ultima(); // última release do agente (GitHub)
         List<Map<String, Object>> lista = new ArrayList<>();
         for (var en : conhecidas.entrySet()) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -264,6 +267,8 @@ public class AdminController {
             m.put("implantacao", IMPLANTACAO);
             m.put("grupo", l == null ? null : l.getGrupo());
             m.put("sistema", l == null ? null : l.getSistema());
+            m.put("versaoAgente", l == null ? null : l.getVersaoAgente());
+            m.put("versaoAtual", versaoAtual);
             m.put("cortesia", l != null && l.isCortesia());
             m.put("recursos", l == null ? java.util.Set.of() : l.getRecursos());
             m.put("situacaoRevenda", cobrancas.situacaoRevenda(l));

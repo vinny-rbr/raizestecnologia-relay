@@ -186,6 +186,16 @@ public class LojaService {
 
     /** Define (ou limpa, com null/"") o grupo/pasta de organizacao da loja. */
     @Transactional
+    public void definirVersaoAgente(String cnpj, int versao) {
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        if (c.isBlank()) return;
+        Loja l = repo.findById(c).orElse(null);
+        if (l == null) return;
+        l.setVersaoAgente(versao);
+        l.setVersaoAgenteEm(java.time.Instant.now());
+        repo.save(l);
+    }
+
     public void definirGrupo(String cnpj, String grupo) {
         String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
         if (c.isBlank()) return;

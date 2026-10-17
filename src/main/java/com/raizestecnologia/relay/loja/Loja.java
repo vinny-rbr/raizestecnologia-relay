@@ -75,6 +75,18 @@ public class Loja {
     @Column(name = "implantacao_paga", nullable = false, columnDefinition = "boolean not null default false")
     private boolean implantacaoPaga = false;
 
+    /** Versão do agente (perguntada ao agente quando conecta) e quando foi vista. */
+    @Column(name = "versao_agente")
+    private Integer versaoAgente;
+
+    @Column(name = "versao_agente_em")
+    private Instant versaoAgenteEm;
+
+    public Integer getVersaoAgente() { return versaoAgente; }
+    public void setVersaoAgente(Integer v) { this.versaoAgente = v; }
+    public Instant getVersaoAgenteEm() { return versaoAgenteEm; }
+    public void setVersaoAgenteEm(Instant em) { this.versaoAgenteEm = em; }
+
     @Column(name = "implantacao_paga_em")
     private Instant implantacaoPagaEm;
 
