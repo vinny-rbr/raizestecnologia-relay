@@ -11,4 +11,9 @@ public interface NotificationService {
 
     /** Notifica o(s) usuario(s) MASTER/DONO (email + push, conforme transporte disponivel). */
     void notifyMaster(String titulo, String corpo);
+
+    /** Só o e-mail (quando o push sai por outro caminho, ex.: saúde das lojas com som próprio). */
+    default void notifyMasterEmail(String titulo, String corpo) {
+        notifyMaster(titulo, corpo);
+    }
 }

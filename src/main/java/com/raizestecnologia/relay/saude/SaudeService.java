@@ -46,6 +46,17 @@ public class SaudeService {
         return s.length() > n ? s.substring(0, n) : s;
     }
 
+    /** Evento gerado pela própria central (ex.: computador da loja ficou offline). */
+    public void registrarCentral(String loja, String tipo, String nivel, String titulo, String detalhe, String chave) {
+        com.fasterxml.jackson.databind.node.ObjectNode n = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        n.put("tipo", tipo);
+        n.put("nivel", nivel);
+        n.put("titulo", titulo);
+        n.put("detalhe", detalhe);
+        n.put("chave", chave);
+        registrar(loja, n);
+    }
+
     public void registrar(String loja, JsonNode n) {
         try {
             String titulo = corta(n.path("titulo").asText(""), 200);

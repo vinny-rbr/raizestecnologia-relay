@@ -56,6 +56,12 @@ public class MasterNotifier implements NotificationService {
         enviarPush(titulo, corpo);
     }
 
+    @Override
+    public void notifyMasterEmail(String titulo, String corpo) {
+        log.warn("[notify-master] {} | {}", titulo, corpo);
+        enviarEmail(titulo, corpo);
+    }
+
     private void enviarEmail(String titulo, String corpo) {
         JavaMailSender mail = mailProvider.getIfAvailable();
         if (mail == null || from.isBlank()) return; // email nao configurado
