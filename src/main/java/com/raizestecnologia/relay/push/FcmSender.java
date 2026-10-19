@@ -85,7 +85,7 @@ public class FcmSender {
             // toque próprio por tipo: pedido de cancelamento e saúde das lojas
             // (Android: canal criado pelo app com o som de res/raw; iOS: <som>.caf no app)
             String tipo = dados == null ? null : dados.get("tipo");
-            String[] canalSom = "cancelamento".equals(tipo) ? new String[]{"cancelamento", "cancelamento"}
+            String[] canalSom = "cancelamento".equals(tipo) || "cancelamento_host".equals(tipo) ? new String[]{"cancelamento", "cancelamento"}
                     : "saude".equals(tipo) ? new String[]{"saude", "alerta"} : null;
             if (canalSom != null) {
                 mb.setAndroidConfig(com.google.firebase.messaging.AndroidConfig.builder()

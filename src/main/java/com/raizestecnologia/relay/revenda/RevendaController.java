@@ -50,6 +50,8 @@ public class RevendaController {
     private final RevendaService revendas;
     private final LojaRepository lojas;
     private final AgentHub hub;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.etiqueta.EstudioEtiquetas estudio;
     private final JwtService jwt;
     private final AppUserRepository users;
     private final PasswordEncoder encoder;
@@ -253,6 +255,24 @@ public class RevendaController {
     }
 
     /** POST /api/revenda/lojas/{cnpj}/grupo — organiza a loja num grupo (vazio = remove). Só as lojas do revendedor. */
+    /** Estudio de Etiquetas da revenda: /api/revenda/etiquetas/{cnpj}/{acao} (so lojas da revenda). */
+    @org.springframework.web.bind.annotation.RequestMapping(value = "/etiquetas/{cnpj}/{acao}",
+            method = {org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
+    public ResponseEntity<String> etiquetas(HttpServletRequest req, @PathVariable String cnpj, @PathVariable String acao,
+                                            @org.springframework.web.bind.annotation.RequestParam(required = false) String q,
+                                            @RequestBody(required = false) String body) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body("{\"success\":false,\"message\":\"Não autorizado\"}");
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        Loja l = lojas.findById(c).orElse(null);
+        if (l == null || !r.getCodigo().equals(l.getRevendaCodigo())) {
+            return ResponseEntity.status(404).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body("{\"success\":false,\"message\":\"Loja não encontrada na sua revenda\"}");
+        }
+        return estudio.repassar(c, req.getMethod(), acao, q, body);
+    }
+
     /** POST /api/revenda/lojas/{cnpj}/recursos {recurso, ativo} — libera Salao / Painel TV / Forca de vendas. */
     @PostMapping("/lojas/{cnpj}/recursos")
     public ResponseEntity<Map<String, Object>> recurso(HttpServletRequest req, @PathVariable String cnpj,
