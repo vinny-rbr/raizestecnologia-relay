@@ -308,6 +308,27 @@ public class RevendaController {
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RevendaController.class);
+
+    @org.springframework.beans.factory.annotation.Value("${LINKPRO_PG_SENHA:}")
+    private String senhaPgLinkPro;
+
+    /**
+     * GET /api/revenda/instalador/pg?codigo=REV... — a senha do usuario postgres do LinkPro, pro
+     * instalador criar o usuario meugiro sem mexer no pg_hba. Fica so aqui (env LINKPRO_PG_SENHA no
+     * Render), nunca no zip do instalador (que e publico). So sai pra codigo de revenda ativa.
+     */
+    @GetMapping("/instalador/pg")
+    public ResponseEntity<Map<String, Object>> senhaPostgres(@org.springframework.web.bind.annotation.RequestParam(required = false) String codigo,
+                                                             HttpServletRequest req) {
+        String c = codigo == null ? "" : codigo.trim().toUpperCase();
+        boolean ok = !senhaPgLinkPro.isBlank() && c.startsWith("REV")
+                && revendas.porCodigo(c).map(Revenda::isAtivo).orElse(false);
+        log.info("[instalador] senha do postgres pedida pela revenda {} ({}): {}", c, req.getRemoteAddr(), ok ? "entregue" : "negada");
+        if (!ok) return ResponseEntity.status(404).body(ApiEnvelope.fail("Não disponível"));
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("senha", senhaPgLinkPro)));
+    }
+
     /**
      * GET /api/revenda/instalador-base — o instalador-base LIMPO (zip), em streaming a
      * partir do release do GitHub (o GitHub nao libera CORS, entao o painel baixa por aqui:
