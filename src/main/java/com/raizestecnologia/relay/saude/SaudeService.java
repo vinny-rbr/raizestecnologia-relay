@@ -74,12 +74,23 @@ public class SaudeService {
             boolean repetido = !"ok".equals(e.getNivel())
                     && (repo.existsByLojaAndChaveAndPushTrueAndCriadoEmAfter(loja, chave, Instant.now().minus(SEM_REPETIR))
                     || emResolucao(loja, chave));
-            e.setPush(!repetido);
+            // das 23h as 8h fica em silencio: registra, mas sem push. Como push=false, se o problema
+            // continuar, a primeira repeticao depois das 8h avisa.
+            boolean avisa = !repetido && !silencio();
+            e.setPush(avisa);
             repo.save(e);
-            if (!repetido) avisarMaster(e);
+            if (avisa) avisarMaster(e);
         } catch (Exception ex) {
             log.warn("[saude] evento da loja {} não registrado: {}", loja, ex.getMessage());
         }
+    }
+
+    private static final java.time.ZoneId BRT = java.time.ZoneId.of("America/Sao_Paulo");
+
+    /** Horario de silencio dos avisos de saude pro master: das 23h as 8h (Brasilia). */
+    static boolean silencio() {
+        int h = java.time.ZonedDateTime.now(BRT).getHour();
+        return h >= 23 || h < 8;
     }
 
     /** Alguém marcou "estou resolvendo" depois do último "voltou ao normal" desse problema: não avisa de novo. */
