@@ -18,7 +18,7 @@ import java.util.Set;
 @Service
 public class EstudioEtiquetas {
 
-    private static final Set<String> ACOES = Set.of("config", "previa", "imprimir");
+    private static final Set<String> ACOES = Set.of("config", "previa", "imprimir", "regua", "avancar");
 
     private final AgentHub hub;
     private final LojaService lojas;
