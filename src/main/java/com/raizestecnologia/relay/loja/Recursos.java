@@ -21,7 +21,7 @@ public final class Recursos {
         if (SALAO.equals(r)) return "Salao";
         if (PAINEL_TV.equals(r)) return "Painel TV";
         if (FORCA_VENDAS.equals(r)) return "Forca de vendas";
-        if (ETIQUETAS.equals(r)) return "Estudio de Etiquetas";
+        if (ETIQUETAS.equals(r)) return "Estudio de Impressao";
         return r;
     }
 

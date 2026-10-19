@@ -35,6 +35,18 @@ public class EstudioEtiquetas {
             return json(403, "{\"success\":false,\"message\":\"Ative o Estúdio de Etiquetas nesta loja primeiro.\"}");
         }
         String path, query = "";
+        if (acao.startsWith("cupom-")) { // cupom da cozinha (agente Link): editor que antes ficava so no PC da loja
+            String a = acao.substring(6);
+            if (!Set.of("config", "padrao", "previa", "pontos", "teste").contains(a)) {
+                return json(404, "{\"success\":false,\"message\":\"Ação desconhecida\"}");
+            }
+            path = "/api/local/cupom/" + ("previa".equals(a) ? "previa64" : a);
+            AgentHub.Resposta r = hub.ask(c, method, path, "", body);
+            if (r.status() == 404) {
+                return json(409, "{\"success\":false,\"message\":\"O cupom da cozinha só existe em loja Link com o agente atualizado.\"}");
+            }
+            return json(r.status(), r.body());
+        }
         if ("produtos".equals(acao)) {
             path = "/api/produtos";
             query = "search=" + URLEncoder.encode(q == null ? "" : q.trim(), StandardCharsets.UTF_8);
