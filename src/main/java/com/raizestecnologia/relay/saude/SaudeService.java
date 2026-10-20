@@ -76,7 +76,9 @@ public class SaudeService {
                     || emResolucao(loja, chave));
             // das 23h as 8h fica em silencio: registra, mas sem push. Como push=false, se o problema
             // continuar, a primeira repeticao depois das 8h avisa.
-            boolean avisa = !repetido && !silencio();
+            // impressora de etiqueta liga/desliga toda hora (pedido do Lucas, 20/10/2026): so na lista, sem push
+            boolean semPush = e.getTipo().startsWith("etiquetadora");
+            boolean avisa = !repetido && !silencio() && !semPush;
             e.setPush(avisa);
             repo.save(e);
             if (avisa) avisarMaster(e);
