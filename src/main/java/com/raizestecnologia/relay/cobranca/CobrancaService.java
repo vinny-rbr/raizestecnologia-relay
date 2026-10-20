@@ -272,6 +272,8 @@ public class CobrancaService {
                 if (l.getRevendaLiberadaAte() == null && !bloqAtiv) continue;
                 Instant ate = l.getAtivadaEm().plus(java.time.Duration.ofHours(REVENDA_HORAS_SEM_PAGAR));
                 if (ate.equals(l.getRevendaLiberadaAte()) && !bloqAtiv) continue;
+                // teste estendido a mao (TESTE_ESTENDIDO): nao encurta pras 24h
+                if (l.getRevendaLiberadaAte() != null && l.getRevendaLiberadaAte().isAfter(ate)) continue;
                 if (bloqAtiv && agora.isBefore(ate)) { l.setBloqueada(false); l.setMotivoBloqueio(null); }
                 if (!bloqAtiv || agora.isBefore(ate)) l.setRevendaLiberadaAte(ate);
                 lojas.save(l);
@@ -280,6 +282,33 @@ public class CobrancaService {
         } catch (Exception e) {
             log.warn("[cobranca] falha ao ajustar prazo de ativação: {}", e.getMessage());
         }
+    }
+
+    /** Lojas de revenda em teste por mais tempo que as 24h (pedido do Lucas): CNPJ -> ultimo dia (Brasilia). */
+    private static final java.util.Map<String, java.time.LocalDate> TESTE_ESTENDIDO = java.util.Map.of(
+            "44875041000105", java.time.LocalDate.of(2026, 10, 31),  // CASA MENDES
+            "63477217000107", java.time.LocalDate.of(2026, 10, 31)); // Agrotom
+
+    /** Ao subir: aplica o teste estendido (ate 23:59 do dia) nas lojas ainda sem pagamento. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @Transactional
+    public void aplicarTesteEstendido() {
+        java.time.ZoneId brt = java.time.ZoneId.of("America/Sao_Paulo");
+        TESTE_ESTENDIDO.forEach((cnpj, dia) -> {
+            try {
+                lojas.findById(cnpj).ifPresent(l -> {
+                    if (l.getMensalidadePagaAte() != null || l.isCortesia()) return;
+                    Instant ate = dia.plusDays(1).atStartOfDay(brt).toInstant().minusSeconds(1);
+                    if (Instant.now().isAfter(ate) || ate.equals(l.getRevendaLiberadaAte())) return;
+                    l.setRevendaLiberadaAte(ate);
+                    if (MOTIVO_ATIVACAO.equals(l.getMotivoBloqueio())) { l.setBloqueada(false); l.setMotivoBloqueio(null); }
+                    lojas.save(l);
+                    log.info("[cobranca] loja {} em teste ate {}", cnpj, dia);
+                });
+            } catch (Exception e) {
+                log.warn("[cobranca] teste estendido da loja {}: {}", cnpj, e.getMessage());
+            }
+        });
     }
 
     /** A cada 5 min: loja de revenda ativada há mais de 24h sem pagar → bloqueia. */
