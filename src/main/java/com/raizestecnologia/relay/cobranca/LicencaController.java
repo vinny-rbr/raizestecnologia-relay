@@ -104,7 +104,12 @@ public class LicencaController {
         LocalDate hoje = LocalDate.now(BRT);
         // vencimento REAL da cobrança pendente (pode estar vencido) — igual ao painel.
         LocalDate vencimento;
-        if (l != null) {
+        if (l != null && l.getRevendaCodigo() != null) {
+            // loja de revenda: nao tem implantacao (o estado dava "hoje + 3" pra sempre e o app mostrava
+            // "vence dia 05 (em 3 dias)" todo dia); vence no dia do ciclo depois do ultimo pago
+            LocalDate base = l.getMensalidadePagaAte() != null ? l.getMensalidadePagaAte().plusDays(1) : hoje;
+            vencimento = proximoVenc(base, diaVenc);
+        } else if (l != null) {
             try { vencimento = LocalDate.parse(cobrancas.estado(l).vencimento()); }
             catch (Exception e) { vencimento = proximoVenc(hoje, diaVenc); }
         } else {
