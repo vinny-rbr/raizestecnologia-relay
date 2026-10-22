@@ -31,6 +31,8 @@ public final class Recursos {
      */
     public static String daRota(String path) {
         if (path == null) return null;
+        // cadastro de cliente (Pessoas > Novo cliente) usa as rotas da forca de vendas, mas vale pra qualquer loja Host
+        if (path.startsWith("/api/forca/clientes") || path.equals("/api/forca/padroes") || path.startsWith("/api/forca/cidades")) return null;
         if (path.startsWith("/api/forca/") || path.equals("/api/forca")) return FORCA_VENDAS;
         if (path.startsWith("/api/etiquetas/") || path.equals("/api/etiquetas")) return ETIQUETAS;
         if (path.startsWith("/api/salao/") && !path.equals("/api/salao/disponivel")) return SALAO;
