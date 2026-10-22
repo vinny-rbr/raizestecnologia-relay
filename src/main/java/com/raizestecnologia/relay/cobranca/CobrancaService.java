@@ -33,13 +33,61 @@ public class CobrancaService {
     private final LojaRepository lojas;
     private final CobrancaLoteRepository lotes;
     private final PagamentoRepository pagamentos;
+    private final com.raizestecnologia.relay.revenda.RevendaRepository revendas;
 
     public CobrancaService(AsaasClient asaas, LojaRepository lojas, CobrancaLoteRepository lotes,
-                           PagamentoRepository pagamentos) {
+                           PagamentoRepository pagamentos, com.raizestecnologia.relay.revenda.RevendaRepository revendas) {
         this.asaas = asaas;
         this.lojas = lojas;
         this.lotes = lotes;
         this.pagamentos = pagamentos;
+        this.revendas = revendas;
+    }
+
+    /**
+     * Preco especial por loja pra uma revenda (CPF/CNPJ da revenda): vale ate "ate"; depois disso so
+     * continua se a revenda tiver ativado pelo menos "meta" clientes ate essa data, senao volta pros R$30.
+     */
+    private record PrecoEspecial(double valor, LocalDate ate, int meta) {}
+
+    private static final java.util.Map<String, PrecoEspecial> PRECO_ESPECIAL = java.util.Map.of(
+            // combinado em 21/10/2026: R$25 ate o fim do ano; fica em R$25 se fechar 10 clientes ate 31/12
+            "47185177000173", new PrecoEspecial(25.0, LocalDate.of(2026, 12, 31), 10));
+
+    /** Codigo da revenda -> preco por loja (so as que tem preco especial valendo). */
+    private static volatile java.util.Map<String, Double> precoPorRevenda = java.util.Map.of();
+
+    /** Recalcula o preco especial ao subir e a cada hora (conta os clientes ativados ate a data). */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 3_600_000, fixedDelay = 3_600_000)
+    public void atualizarPrecosRevenda() {
+        try {
+            java.util.Map<String, Double> m = new java.util.HashMap<>();
+            LocalDate hoje = LocalDate.now(BRT);
+            PRECO_ESPECIAL.forEach((doc, p) -> {
+                for (var r : revendas.findByCpfCnpj(doc)) {
+                    boolean vale = !hoje.isAfter(p.ate());
+                    if (!vale) {
+                        Instant fim = p.ate().plusDays(1).atStartOfDay(BRT).toInstant();
+                        long clientes = lojas.findAll().stream()
+                                .filter(l -> r.getCodigo().equals(l.getRevendaCodigo()) && l.isRevendaAtivada()
+                                        && l.getAtivadaEm() != null && l.getAtivadaEm().isBefore(fim))
+                                .count();
+                        vale = clientes >= p.meta();
+                    }
+                    if (vale) m.put(r.getCodigo(), p.valor());
+                }
+            });
+            precoPorRevenda = java.util.Map.copyOf(m);
+            log.info("[cobranca] preco especial de revenda valendo: {}", m);
+        } catch (Exception e) {
+            log.warn("[cobranca] preco especial de revenda: {}", e.getMessage());
+        }
+    }
+
+    /** Preco por loja que esta revenda paga (R$30 ou o especial). */
+    public static double mensalidadeRevenda(String revendaCodigo) {
+        return revendaCodigo == null ? REVENDA_MENSALIDADE : precoPorRevenda.getOrDefault(revendaCodigo, REVENDA_MENSALIDADE);
     }
 
     // Diagnóstico do Asaas (só leitura).
@@ -353,7 +401,7 @@ public class CobrancaService {
                 l.setRevendaLiberadaAte(Instant.now().plus(java.time.Duration.ofHours(REVENDA_HORAS_SEM_PAGAR)));
             }
             l.setDiaVencimento(DIA_COBRANCA);
-            l.setMensalidade(REVENDA_MENSALIDADE);
+            l.setMensalidade(mensalidadeRevenda(l.getRevendaCodigo()));
             l.setImplantacaoPaga(true);
             liberar(l);
         }, "revenda_ciclo_ativado");
@@ -403,7 +451,7 @@ public class CobrancaService {
 
     /** Quanto a revenda paga agora por esta loja (R$30 ou o proporcional de R$20). */
     public static double valorRevenda(Loja l) {
-        return l.getRevendaValorProximo() != null ? l.getRevendaValorProximo() : REVENDA_MENSALIDADE;
+        return l.getRevendaValorProximo() != null ? l.getRevendaValorProximo() : mensalidadeRevenda(l.getRevendaCodigo());
     }
 
     /** 1º pagamento da loja de revenda, pelo dia em que fechou o cliente (ativação):

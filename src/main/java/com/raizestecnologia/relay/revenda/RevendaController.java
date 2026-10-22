@@ -904,7 +904,7 @@ public class RevendaController {
         m.put("sistema", l.getSistema());
         m.put("recursos", l.getRecursos());
         // ciclo de R$30/mês que o revendedor paga ao dono
-        m.put("mensalidade", com.raizestecnologia.relay.cobranca.CobrancaService.REVENDA_MENSALIDADE);
+        m.put("mensalidade", com.raizestecnologia.relay.cobranca.CobrancaService.mensalidadeRevenda(l.getRevendaCodigo()));
         // parcela "da vez": o próximo dia 5 só conta quando abre (10 dias antes); antes disso vale o que já venceu
         LocalDate venc = proximoVenc(l.getDiaVencimento());
         if (LocalDate.now(BRT).isBefore(venc.minusDays(com.raizestecnologia.relay.cobranca.CobrancaService.LIBERA_PAGAMENTO_DIAS))) {
