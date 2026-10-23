@@ -2,8 +2,11 @@
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
+# dependências numa camada própria: o Docker reaproveita entre deploys e só baixa de novo
+# quando o pom.xml muda (o Maven Central devolve 429 com muitos downloads seguidos)
+RUN mvn -q -B dependency:go-offline || true
 COPY src ./src
-RUN mvn -q -DskipTests package
+RUN mvn -q -B -DskipTests package
 
 # Run
 FROM eclipse-temurin:17-jre
