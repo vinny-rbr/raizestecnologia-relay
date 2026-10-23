@@ -35,6 +35,12 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
+                // o app de demonstração (/demo) aparece dentro do site da Vinny (moldura de celular);
+                // fora isso, ninguém pode embutir o relay numa página
+                .headers(h -> h
+                        .frameOptions(f -> f.disable())
+                        .contentSecurityPolicy(c -> c.policyDirectives("frame-ancestors 'self' "
+                                + "https://vinnytecnologia.com.br https://www.vinnytecnologia.com.br https://*.vercel.app")))
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(ex -> ex
