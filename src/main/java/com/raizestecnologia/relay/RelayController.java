@@ -56,11 +56,13 @@ public class RelayController {
         for (var en : conhecidas.entrySet()) {
             String cnpj = en.getKey();
             if (!dono && !visiveis.contains(cnpj)) continue;
+            boolean demo = com.raizestecnologia.relay.demo.ContaDemo.eh(principal);
             Map<String, Object> m = new java.util.LinkedHashMap<>();
             m.put("cnpj", cnpj);
-            m.put("nome", en.getValue());
+            // conta demo não vê o nome real da loja
+            m.put("nome", demo ? com.raizestecnologia.relay.demo.ContaDemo.LOJAS.getOrDefault(cnpj, en.getValue()) : en.getValue());
             m.put("online", hub.online(cnpj));
-            boolean bloq = lojas.estaBloqueada(cnpj);
+            boolean bloq = !demo && lojas.estaBloqueada(cnpj);
             m.put("bloqueada", bloq);
             m.put("motivo", bloq ? lojas.motivo(cnpj) : "");
             lista.add(m);
@@ -104,9 +106,14 @@ public class RelayController {
             if (!cnpjsVisiveis(principal).contains(cnpjDigits)) {
                 return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta empresa\"}");
             }
+            boolean demo = com.raizestecnologia.relay.demo.ContaDemo.eh(principal);
+            // Conta de demonstração: só visualização.
+            if (demo && !"GET".equalsIgnoreCase(request.getMethod())) {
+                return json(403, "{\"success\":false,\"message\":\"Modo demonstração: aqui é só pra visualizar.\"}");
+            }
             // Loja suspensa por pendencia de pagamento: bloqueia os usuarios dela
-            // (o DONO/master continua acessando para poder administrar).
-            if (lojas.estaBloqueada(cnpjDigits)) {
+            // (o DONO/master continua acessando para poder administrar; a demo também).
+            if (!demo && lojas.estaBloqueada(cnpjDigits)) {
                 String motivo = lojas.motivo(cnpjDigits);
                 String msg = motivo.isBlank() ? "Acesso suspenso. Fale com o suporte." : motivo;
                 return json(402, "{\"success\":false,\"bloqueada\":true,\"message\":\"" + escape(msg) + "\"}");
