@@ -108,6 +108,10 @@ public class RelayController {
             }
             boolean demo = com.raizestecnologia.relay.demo.ContaDemo.eh(principal);
             // Conta de demonstração: só visualização.
+            // ...e sem os dados cadastrais da loja (razão social/CNPJ reais)
+            if (demo && path.startsWith("/api/empresa")) {
+                return json(403, "{\"success\":false,\"message\":\"Modo demonstração: dados da empresa ocultos.\"}");
+            }
             if (demo && !"GET".equalsIgnoreCase(request.getMethod())) {
                 return json(403, "{\"success\":false,\"message\":\"Modo demonstração: aqui é só pra visualizar.\"}");
             }
