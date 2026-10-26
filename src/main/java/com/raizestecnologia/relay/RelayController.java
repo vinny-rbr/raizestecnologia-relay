@@ -110,13 +110,10 @@ public class RelayController {
                 return json(403, "{\"success\":false,\"message\":\"Sem permissao para esta empresa\"}");
             }
             boolean demo = com.raizestecnologia.relay.demo.ContaDemo.eh(principal);
-            // Conta de demonstração: só visualização.
-            // ...e sem os dados cadastrais da loja (razão social/CNPJ reais)
+            // Conta de demonstração: pode alterar (as lojas dela são bancos de teste),
+            // mas sem os dados cadastrais da loja (razão social/CNPJ reais)
             if (demo && path.startsWith("/api/empresa")) {
                 return json(403, "{\"success\":false,\"message\":\"Modo demonstração: dados da empresa ocultos.\"}");
-            }
-            if (demo && !"GET".equalsIgnoreCase(request.getMethod())) {
-                return json(403, "{\"success\":false,\"message\":\"Modo demonstração: aqui é só pra visualizar.\"}");
             }
             // Loja suspensa por pendencia de pagamento: bloqueia os usuarios dela
             // (o DONO/master continua acessando para poder administrar; a demo também).

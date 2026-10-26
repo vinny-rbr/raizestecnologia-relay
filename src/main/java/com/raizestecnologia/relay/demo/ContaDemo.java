@@ -20,7 +20,7 @@ import java.util.Map;
  * Conta de demonstração (apresentação pra clientes de outros estados, pelo app web em /demo).
  *  - login "demo" (senha em DEMO_SENHA, padrão "demo"), criada/ajustada sozinha ao subir;
  *  - vê só as lojas de demonstração (Host e Link da máquina do Lucas), com nome trocado;
- *  - só visualização: o relay recusa qualquer gravação dessa conta;
+ *  - pode gravar (as lojas de demonstração são bancos de teste);
  *  - passa pelo bloqueio de loja suspensa (só ela, as lojas continuam como estão pros outros).
  */
 @Component
@@ -63,7 +63,7 @@ public class ContaDemo {
             u.setLogin(LOGIN);
             u.setNome("Demonstração");
             u.setRole("OPERADOR");
-            u.setPermissoes(null);   // todas as telas (só leitura)
+            u.setPermissoes(null);   // todas as telas
             u.setAtivo(true);
             u.setSenhaProvisoria(false);
             if (nova || !encoder.matches(senha, u.getSenhaHash())) u.setSenhaHash(encoder.encode(senha));
