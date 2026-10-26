@@ -103,12 +103,7 @@ public class AgentMonitor {
         long desde = System.currentTimeMillis() - delaySeconds * 1000L;
         caiuEm.put(cnpj, desde);
         avisarOffline(cnpj, desde);
-        // enquanto continuar offline, lembra a cada 5 min (com quanto tempo já está fora)
-        ScheduledFuture<?> antes = lembretes.put(cnpj, scheduler.scheduleAtFixedRate(() -> {
-            if (hub.online(cnpj) || !alertados.contains(cnpj)) return;
-            avisarOffline(cnpj, desde);
-        }, 305, 305, TimeUnit.SECONDS));
-        if (antes != null) antes.cancel(false);
+        // avisa uma vez só (pedido do Lucas, 26/10/2026): o problema fica nos Pendentes até voltar
     }
 
     private void avisarOffline(String cnpj, long desde) {

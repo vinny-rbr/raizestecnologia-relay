@@ -24,7 +24,6 @@ import java.util.Map;
 public class SaudeService {
 
     private static final Logger log = LoggerFactory.getLogger(SaudeService.class);
-    private static final Duration SEM_REPETIR = Duration.ofMinutes(5);
 
     private final EventoLojaRepository repo;
     private final LojaService lojas;
@@ -71,19 +70,53 @@ public class SaudeService {
             e.setDetalhe(corta(n.path("detalhe").asText(""), 1000));
             String chave = corta(n.path("chave").asText(e.getTipo() + ":" + titulo), 200);
             e.setChave(chave);
-            boolean repetido = !"ok".equals(e.getNivel())
-                    && (repo.existsByLojaAndChaveAndPushTrueAndCriadoEmAfter(loja, chave, Instant.now().minus(SEM_REPETIR))
-                    || emResolucao(loja, chave));
-            // das 23h as 8h fica em silencio: registra, mas sem push. Como push=false, se o problema
-            // continuar, a primeira repeticao depois das 8h avisa.
             // impressora de etiqueta liga/desliga toda hora (pedido do Lucas, 20/10/2026): so na lista, sem push
             boolean semPush = e.getTipo().startsWith("etiquetadora");
-            boolean avisa = !repetido && !silencio() && !semPush;
-            e.setPush(avisa);
-            repo.save(e);
-            if (avisa) avisarMaster(e);
+            var ultimo = repo.findTopByLojaAndChaveOrderByCriadoEmDesc(loja, chave);
+            boolean aberto = ultimo.isPresent() && !"ok".equals(ultimo.get().getNivel());
+            if (!"ok".equals(e.getNivel())) {
+                // problema que já está aberto: não grava de novo nem avisa (pedido do Lucas, 26/10/2026: avisa uma vez
+                // só e fica nos Pendentes até resolver). Só atualiza o detalhe (ex.: "offline há 40 min").
+                if (aberto) {
+                    EventoLoja u = ultimo.get();
+                    u.setDetalhe(e.getDetalhe());
+                    repo.save(u);
+                    return;
+                }
+                // das 23h as 8h registra sem push; o avisarPendentes() manda depois das 8h se ainda estiver aberto
+                boolean avisa = !silencio() && !semPush && !emResolucao(loja, chave);
+                e.setPush(avisa);
+                repo.save(e);
+                if (avisa) avisarMaster(e);
+            } else {
+                // voltou ao normal: avisa só se o problema tinha sido avisado
+                boolean avisa = aberto && ultimo.get().isPush() && !semPush;
+                e.setPush(avisa);
+                repo.save(e);
+                if (avisa) avisarMaster(e);
+            }
         } catch (Exception ex) {
             log.warn("[saude] evento da loja {} não registrado: {}", loja, ex.getMessage());
+        }
+    }
+
+    /** Problema que começou no silêncio (23h-8h) e continua aberto: avisa uma vez depois das 8h. */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 120_000, fixedDelay = 300_000)
+    public void avisarPendentes() {
+        if (silencio()) return;
+        try {
+            java.util.Map<String, EventoLoja> ultimo = new java.util.LinkedHashMap<>();
+            for (EventoLoja e : repo.findByCriadoEmAfterOrderByCriadoEmAsc(Instant.now().minus(Duration.ofHours(12))))
+                ultimo.put(e.getLoja() + "|" + e.getChave(), e);
+            for (EventoLoja e : ultimo.values()) {
+                if ("ok".equals(e.getNivel()) || e.isPush() || e.getTipo().startsWith("etiquetadora")) continue;
+                if (emResolucao(e.getLoja(), e.getChave())) continue;
+                e.setPush(true);
+                repo.save(e);
+                avisarMaster(e);
+            }
+        } catch (Exception ex) {
+            log.warn("[saude] pendentes da madrugada: {}", ex.getMessage());
         }
     }
 

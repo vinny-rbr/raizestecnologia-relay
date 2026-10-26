@@ -17,4 +17,13 @@ public interface EventoLojaRepository extends JpaRepository<EventoLoja, Long> {
     java.util.Optional<EventoLoja> findTopByLojaAndChaveAndResolvendoTrueOrderByResolvendoEmDesc(String loja, String chave);
 
     java.util.Optional<EventoLoja> findTopByLojaAndChaveAndNivelOrderByCriadoEmDesc(String loja, String chave, String nivel);
+
+    /** Último evento desse problema (qualquer nível). */
+    java.util.Optional<EventoLoja> findTopByLojaAndChaveOrderByCriadoEmDesc(String loja, String chave);
+
+    /** Já avisou (push) esse problema depois do instante? */
+    boolean existsByLojaAndChaveAndPushTrueAndNivelNotAndCriadoEmAfter(String loja, String chave, String nivel, Instant depois);
+
+    /** Eventos da janela, pra montar pendentes e o relatório. */
+    List<EventoLoja> findByCriadoEmAfterOrderByCriadoEmAsc(Instant depois);
 }
