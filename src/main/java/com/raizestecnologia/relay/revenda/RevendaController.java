@@ -308,6 +308,23 @@ public class RevendaController {
         return ResponseEntity.ok(ApiEnvelope.ok(lojaJson(l)));
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.loja.LojaLogoRepository logos;
+
+    /** POST /api/revenda/lojas/{cnpj}/logo {logo: base64 | ""} — logo da loja pros PDFs do app ("" = remove). */
+    @PostMapping("/lojas/{cnpj}/logo")
+    public ResponseEntity<Map<String, Object>> definirLogo(HttpServletRequest req, @PathVariable String cnpj,
+                                                           @RequestBody(required = false) Map<String, String> body) {
+        Revenda r = autorizar(req);
+        if (r == null) return ResponseEntity.status(401).body(ApiEnvelope.fail("Não autorizado"));
+        String c = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        Loja l = lojas.findById(c).orElse(null);
+        if (l == null || !r.getCodigo().equals(l.getRevendaCodigo())) {
+            return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada na sua revenda"));
+        }
+        return com.raizestecnologia.relay.loja.LojaLogoController.salvar(logos, c, body);
+    }
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(RevendaController.class);
 
     @org.springframework.beans.factory.annotation.Value("${LINKPRO_PG_SENHA:}")
