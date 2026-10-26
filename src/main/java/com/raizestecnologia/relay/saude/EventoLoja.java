@@ -63,6 +63,13 @@ public class EventoLoja {
     @Column(name = "resolvendo_em")
     private Instant resolvendoEm;
 
+    /** Última vez que o agente relatou esse problema (repetições não viram linha nova). */
+    @Column(name = "visto_em")
+    private Instant vistoEm;
+
+    public Instant getVistoEm() { return vistoEm; }
+    public void setVistoEm(Instant v) { this.vistoEm = v; }
+
     public boolean isResolvendo() { return resolvendo; }
     public void setResolvendo(boolean r) { this.resolvendo = r; }
     public String getResolvendoPor() { return resolvendoPor; }

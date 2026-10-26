@@ -30,8 +30,11 @@ public class SaudeService {
     private final AppUserRepository users;
     private final DeviceTokenRepository tokens;
     private final FcmSender fcm;
+    private final org.springframework.beans.factory.ObjectProvider<com.raizestecnologia.relay.AgentHub> hub;
 
-    public SaudeService(EventoLojaRepository repo, LojaService lojas, AppUserRepository users, DeviceTokenRepository tokens, FcmSender fcm) {
+    public SaudeService(EventoLojaRepository repo, LojaService lojas, AppUserRepository users, DeviceTokenRepository tokens, FcmSender fcm,
+                        org.springframework.beans.factory.ObjectProvider<com.raizestecnologia.relay.AgentHub> hub) {
+        this.hub = hub;
         this.repo = repo;
         this.lojas = lojas;
         this.users = users;
@@ -80,12 +83,14 @@ public class SaudeService {
                 if (aberto) {
                     EventoLoja u = ultimo.get();
                     u.setDetalhe(e.getDetalhe());
+                    u.setVistoEm(Instant.now());
                     repo.save(u);
                     return;
                 }
                 // das 23h as 8h registra sem push; o avisarPendentes() manda depois das 8h se ainda estiver aberto
                 boolean avisa = !silencio() && !semPush && !emResolucao(loja, chave);
                 e.setPush(avisa);
+                e.setVistoEm(e.getCriadoEm());
                 repo.save(e);
                 if (avisa) avisarMaster(e);
             } else {
@@ -97,6 +102,48 @@ public class SaudeService {
             }
         } catch (Exception ex) {
             log.warn("[saude] evento da loja {} não registrado: {}", loja, ex.getMessage());
+        }
+    }
+
+    /** Problemas que aparecem nos Pendentes: os que se resolvem (offline, impressora, etiquetadora) e os graves. */
+    public static boolean pendencia(EventoLoja e) {
+        String t = e.getTipo() == null ? "" : e.getTipo();
+        return "grave".equals(e.getNivel()) || t.equals("agente_off") || t.endsWith("_fora");
+    }
+
+    /**
+     * A cada 5 min fecha sozinho o que já passou (sem push): loja dada como offline que está online agora, e
+     * impressora/etiquetadora "fora" que o agente parou de relatar há 30 min (ele repete enquanto continua fora).
+     */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 180_000, fixedDelay = 300_000)
+    public void fecharResolvidos() {
+        try {
+            com.raizestecnologia.relay.AgentHub h = hub.getIfAvailable();
+            java.util.Map<String, EventoLoja> ultimo = new java.util.LinkedHashMap<>();
+            for (EventoLoja e : repo.findByCriadoEmAfterOrderByCriadoEmAsc(Instant.now().minus(Duration.ofDays(30))))
+                ultimo.put(e.getLoja() + "|" + e.getChave(), e);
+            Instant limite = Instant.now().minus(Duration.ofMinutes(30));
+            for (EventoLoja e : ultimo.values()) {
+                if ("ok".equals(e.getNivel())) continue;
+                String t = e.getTipo() == null ? "" : e.getTipo();
+                Instant visto = e.getVistoEm() != null ? e.getVistoEm() : e.getCriadoEm();
+                String motivo = null;
+                if (t.equals("agente_off") && h != null && h.online(e.getLoja())) motivo = "o agente está conectado de novo";
+                else if (t.endsWith("_fora") && visto.isBefore(limite)) motivo = "parou de acontecer";
+                if (motivo == null) continue;
+                EventoLoja ok = new EventoLoja();
+                ok.setLoja(e.getLoja());
+                ok.setLojaNome(e.getLojaNome());
+                ok.setTipo(e.getTipo());
+                ok.setNivel("ok");
+                ok.setTitulo(t.equals("agente_off") ? "Computador da loja voltou" : "Normalizou");
+                ok.setDetalhe(e.getTitulo() + ": " + motivo);
+                ok.setChave(e.getChave());
+                ok.setPush(false);
+                repo.save(ok);
+            }
+        } catch (Exception ex) {
+            log.warn("[saude] limpeza dos pendentes: {}", ex.getMessage());
         }
     }
 

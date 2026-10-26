@@ -85,7 +85,7 @@ public class SaudeController {
         List<Map<String, Object>> out = new java.util.ArrayList<>();
         for (var en : ultimo.entrySet()) {
             EventoLoja e = en.getValue();
-            if ("ok".equals(e.getNivel())) continue;
+            if ("ok".equals(e.getNivel()) || !SaudeService.pendencia(e)) continue;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", e.getId());
             m.put("loja", e.getLoja());
