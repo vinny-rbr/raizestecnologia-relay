@@ -62,6 +62,9 @@ public class RelayController {
             // conta demo não vê o nome real da loja
             m.put("nome", demo ? com.raizestecnologia.relay.demo.ContaDemo.LOJAS.getOrDefault(cnpj, en.getValue()) : en.getValue());
             m.put("online", hub.online(cnpj));
+            // grupo = lojas do mesmo dono (definido no painel): o app oferece "cadastrar também" entre elas
+            String grupo = demo ? null : lojas.grupo(cnpj);
+            m.put("grupo", grupo == null ? "" : grupo);
             boolean bloq = !demo && lojas.estaBloqueada(cnpj);
             m.put("bloqueada", bloq);
             m.put("motivo", bloq ? lojas.motivo(cnpj) : "");
