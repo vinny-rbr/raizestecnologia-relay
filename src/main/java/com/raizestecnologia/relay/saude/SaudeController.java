@@ -51,6 +51,18 @@ public class SaudeController {
     private static final ResponseEntity<Map<String, Object>> SEM_PERMISSAO =
             ResponseEntity.status(403).body(ApiEnvelope.fail("Sem permissão para esta loja"));
 
+    /** GET .../ativas — lojas com a Saúde ligada que o usuário vê ({todas:true} pro master). O app usa pra explicar a
+     *  Saúde (e o preço) pra revenda que ainda não ligou em nenhuma loja. */
+    @GetMapping("/ativas")
+    public ResponseEntity<Map<String, Object>> ativas() {
+        java.util.Set<String> ok = permitidas();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("todas", ok == null);
+        out.put("lojas", ok == null ? List.of() : List.copyOf(ok));
+        out.put("precoMensal", com.raizestecnologia.relay.cobranca.CobrancaService.SAUDE_REVENDA);
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
     /** POST /api/admin/saude/{id}/resolvendo {resolvendo:true|false} — "estou resolvendo": para os avisos desse problema. */
     @org.springframework.web.bind.annotation.PostMapping("/{id}/resolvendo")
     public ResponseEntity<Map<String, Object>> resolvendo(@org.springframework.web.bind.annotation.PathVariable Long id,
