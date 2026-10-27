@@ -108,10 +108,12 @@ public class SuporteService {
         if (!m.minha() && !numero.isEmpty()) registrarAutor(numero, m.autorNome(), m.grupoNome(), quando);
 
         SuporteEquipe membro = m.minha() ? new SuporteEquipe("", cfg(CFG_MEU_NOME), "TECNICO") : membroDaEquipe(numero);
+        // comercial (ex.: Rômulo, dono da empresa) conta como cliente: pode abrir chamado pro cliente, mas nunca atende
+        if (membro != null && !membro.isTecnico()) membro = null;
         if (membro != null) {
-            // equipe: não abre chamado. Comercial não atende; técnico: o ÚLTIMO que escreve assume o chamado
+            // técnico: não abre chamado; o ÚLTIMO técnico que escreve assume o chamado
             // (ex.: Emerson manda "um momento, já vamos atender" e depois outro técnico entra e assume).
-            if (aberto.isEmpty() || !membro.isTecnico()) return;
+            if (aberto.isEmpty()) return;
             Chamado c = aberto.get();
             String cmd = comando(texto);
             if (c.getPrimeiraRespostaEm() == null && quando.isAfter(c.getAbertoEm())) c.setPrimeiraRespostaEm(quando);

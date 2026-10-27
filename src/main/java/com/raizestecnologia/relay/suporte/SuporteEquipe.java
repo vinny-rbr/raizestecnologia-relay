@@ -18,7 +18,7 @@ public class SuporteEquipe {
     @Column(name = "nome", length = 80, nullable = false)
     private String nome;
 
-    /** TECNICO (atende e assume chamado) | COMERCIAL (só não abre chamado). null = técnico. */
+    /** TECNICO (atende e assume chamado) | COMERCIAL (pode abrir chamado, nunca atende). null = técnico. */
     @Column(name = "funcao", length = 15)
     private String funcao;
 
