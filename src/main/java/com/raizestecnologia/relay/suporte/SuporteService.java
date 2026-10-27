@@ -117,6 +117,7 @@ public class SuporteService {
             Chamado c = aberto.get();
             String cmd = comando(texto);
             if (c.getPrimeiraRespostaEm() == null && quando.isAfter(c.getAbertoEm())) c.setPrimeiraRespostaEm(quando);
+            c.setUltimaRespostaEm(quando);
             if ("FINALIZAR".equals(cmd)) {
                 finalizar(c, membro.getNome(), quando);
             } else if (!membro.getNome().equals(c.getAtendidoPor())) {
@@ -235,6 +236,9 @@ public class SuporteService {
         m.put("atendidoEm", str(c.getAtendidoEm()));
         m.put("finalizadoPor", c.getFinalizadoPor());
         m.put("finalizadoEm", str(c.getFinalizadoEm()));
+        Instant esp = c.esperandoDesde();
+        m.put("esperandoDesde", str(esp));
+        m.put("minutosEsperando", esp == null ? null : minutos(esp, Instant.now()));
         m.put("minutosResposta", minutos(c.getAbertoEm(), c.getPrimeiraRespostaEm()));
         m.put("minutosSolucao", minutos(c.getAbertoEm(), c.getFinalizadoEm()));
         return m;

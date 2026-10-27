@@ -66,6 +66,10 @@ public class Chamado {
     @Column(name = "primeira_resposta_em")
     private Instant primeiraRespostaEm;
 
+    /** última mensagem da equipe no grupo (cliente "esperando" = mandou mensagem depois disso e ninguém respondeu) */
+    @Column(name = "ultima_resposta_em")
+    private Instant ultimaRespostaEm;
+
     @Column(name = "atendido_por", length = 80)
     private String atendidoPor;
 
@@ -101,6 +105,17 @@ public class Chamado {
     public void setAbertoEm(Instant v) { this.abertoEm = v; }
     public Instant getPrimeiraRespostaEm() { return primeiraRespostaEm; }
     public void setPrimeiraRespostaEm(Instant v) { this.primeiraRespostaEm = v; }
+    public Instant getUltimaRespostaEm() { return ultimaRespostaEm; }
+    public void setUltimaRespostaEm(Instant v) { this.ultimaRespostaEm = v; }
+
+    /** Desde quando o cliente espera resposta (null = não está esperando). Aguardando: desde que abriu. */
+    public Instant esperandoDesde() {
+        if (FINALIZADO.equals(status)) return null;
+        if (ABERTO.equals(status) && ultimaRespostaEm == null) return abertoEm;
+        if (ultimaMensagemEm == null) return null;
+        return ultimaRespostaEm == null || ultimaMensagemEm.isAfter(ultimaRespostaEm) ? ultimaMensagemEm : null;
+    }
+
     public String getAtendidoPor() { return atendidoPor; }
     public void setAtendidoPor(String v) { this.atendidoPor = v; }
     public Instant getAtendidoEm() { return atendidoEm; }
