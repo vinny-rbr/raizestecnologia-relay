@@ -367,6 +367,26 @@ public class AdminController {
         }
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.loja.LojaRepository lojaRepo;
+
+    /** POST /api/admin/lojas/{cnpj}/cortesia {"cortesia": true} — loja sem cobrança (teste/da casa): sai da receita
+     *  e não é cobrada nem bloqueada por atraso. */
+    @PostMapping("/lojas/{cnpj}/cortesia")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> definirCortesia(@PathVariable String cnpj,
+                                                               @RequestBody(required = false) Map<String, Object> body) {
+        String c = normalizeCnpj(cnpj);
+        if (c == null) return ResponseEntity.status(400).body(ApiEnvelope.fail("cnpj invalido"));
+        var l = lojaRepo.findById(c).orElse(null);
+        if (l == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Loja não encontrada"));
+        boolean v = body == null || !Boolean.FALSE.equals(body.get("cortesia"));
+        l.setCortesia(v);
+        lojaRepo.save(l);
+        registrarAcao(c, "loja_cortesia", v ? "Sem cobrança" : "Volta a ser cobrada");
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("cnpj", c, "cortesia", v)));
+    }
+
     /** POST /api/admin/lojas/{cnpj}/mensalidade  body: {"valor": 89.90} — define o valor mensal do cliente. */
     @PostMapping("/lojas/{cnpj}/mensalidade")
     @Transactional
