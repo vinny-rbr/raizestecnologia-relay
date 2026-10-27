@@ -169,6 +169,10 @@ public class SuporteService {
         // atender não precisa de comando (a 1ª resposta da equipe já marca); estes só passam o chamado pra quem mandou
         if (t.startsWith("#atendendo") || t.startsWith("#peguei")) return "ATENDER";
         if (t.startsWith("#finalizado") || t.startsWith("#resolvido") || t.startsWith("#fim")) return "FINALIZAR";
+        // do jeito que a equipe já escreve: "chamado finalizado" (ou a mensagem ser só "finalizado")
+        String sem = t.replaceAll("[.!\\s]+$", "");
+        if (sem.matches("chamado (finalizado|encerrado|resolvido|concluido)( .*)?")) return "FINALIZAR";
+        if (sem.matches("(finalizado|encerrado|resolvido|concluido)")) return "FINALIZAR";
         return null;
     }
 
