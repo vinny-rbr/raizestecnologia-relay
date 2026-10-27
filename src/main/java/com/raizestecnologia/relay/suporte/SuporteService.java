@@ -314,6 +314,86 @@ public class SuporteService {
         return chamados.findByStatusInOrderByAbertoEmAsc(ATIVOS).stream().map(this::json).toList();
     }
 
+    // ---------- chamado parado: aviso no celular + resumo pra colar no grupo ----------
+
+    static final long PARADO_MIN = 10;   // cliente esperando há 10 min → avisa
+    static final long REPETE_MIN = 30;   // continua parado → avisa de novo a cada 30 min
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.push.FcmSender fcm;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.push.DeviceTokenRepository tokens;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.auth.AppUserRepository users;
+
+    /** A cada minuto: chamado com cliente esperando há 10+ min vai pro celular do master (um aviso só, com todos). */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 90_000, fixedDelay = 60_000)
+    @Transactional
+    public void avisarParados() {
+        if (!fcm.enabled()) return;
+        Instant agora = Instant.now();
+        List<Chamado> novos = new ArrayList<>();
+        for (Chamado c : chamados.findByStatusInOrderByAbertoEmAsc(ATIVOS)) {
+            Instant esp = c.esperandoDesde();
+            if (esp == null || esp.isAfter(agora.minusSeconds(PARADO_MIN * 60))) continue;
+            Instant ult = c.getAlertaEm();
+            if (ult != null && ult.isAfter(esp) && ult.isAfter(agora.minusSeconds(REPETE_MIN * 60))) continue;
+            novos.add(c);
+        }
+        if (novos.isEmpty()) return;
+        novos.forEach(c -> c.setAlertaEm(agora));
+        chamados.saveAll(novos);
+        List<Long> donos = users.findByRoleIgnoreCaseAndAtivoTrue("DONO").stream()
+                .map(com.raizestecnologia.relay.auth.AppUser::getId).toList();
+        List<String> toks = tokens.findByUserIdIn(donos).stream()
+                .map(com.raizestecnologia.relay.push.DeviceToken::getToken).distinct().toList();
+        String titulo = novos.size() == 1 ? "⏰ Chamado parado: " + grupoCurto(novos.get(0).getGrupoNome())
+                : "⏰ " + novos.size() + " chamados parados no suporte";
+        String corpo = String.join("\n", novos.stream().map(c -> grupoCurto(c.getGrupoNome()) + ": esperando há "
+                + duracao(Duration.between(c.esperandoDesde(), agora).toMinutes())).toList());
+        fcm.sendToTokens(toks, titulo, corpo, Map.of("tipo", "suporte"));
+        log.info("[suporte] aviso de chamado parado: {}", corpo.replace("\n", " | "));
+    }
+
+    /** Texto pronto pra colar no WhatsApp com todos os chamados em aberto. */
+    public String resumoTexto() {
+        Instant agora = Instant.now();
+        List<Chamado> l = chamados.findByStatusInOrderByAbertoEmAsc(ATIVOS);
+        var fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(BRT);
+        StringBuilder sb = new StringBuilder("*Chamados em aberto* (" + fmt.format(agora) + ")\n");
+        if (l.isEmpty()) return sb.append("\nNenhum chamado em aberto ✅").toString();
+        int i = 0;
+        for (Chamado c : l) {
+            sb.append("\n*").append(++i).append(". ").append(grupoCurto(c.getGrupoNome())).append("*\n");
+            if (c.getClienteNome() != null && !c.getClienteNome().isBlank()) sb.append("Cliente: ").append(c.getClienteNome()).append("\n");
+            sb.append("Aberto há ").append(duracao(Duration.between(c.getAbertoEm(), agora).toMinutes())).append("\n");
+            Instant esp = c.esperandoDesde();
+            String espera = esp == null ? null : duracao(Duration.between(esp, agora).toMinutes());
+            if (Chamado.ABERTO.equals(c.getStatus()) && c.getAtendidoPor() == null) {
+                sb.append("🔴 Sem atendimento").append(espera == null ? "" : " (esperando há " + espera + ")").append("\n");
+            } else {
+                sb.append("🟡 Com ").append(c.getAtendidoPor() == null ? "a equipe" : c.getAtendidoPor())
+                        .append(espera == null ? "" : ", cliente esperando resposta há " + espera).append("\n");
+            }
+            String msg = c.getUltimaMensagem() == null ? c.getPrimeiraMensagem() : c.getUltimaMensagem();
+            if (msg != null && !msg.isBlank()) sb.append("_\"").append(msg.length() > 120 ? msg.substring(0, 120) + "..." : msg).append("\"_\n");
+        }
+        return sb.toString().trim();
+    }
+
+    /** "SUP - POSTO X" → "POSTO X" */
+    static String grupoCurto(String g) {
+        if (g == null) return "Grupo";
+        String s = g.replaceFirst("(?i)^\\s*sup(orte)?\\s*[-:._|]*\\s*", "").trim();
+        return s.isEmpty() ? g.trim() : s;
+    }
+
+    static String duracao(long min) {
+        if (min < 60) return min + " min";
+        long h = min / 60, m = min % 60;
+        return h + "h" + (m > 0 ? String.format(" %02dmin", m) : "");
+    }
+
     /** Resumo/relatório de um período (datas em Brasília, inclusive). */
     public Map<String, Object> relatorio(LocalDate de, LocalDate ate, boolean comLista) {
         Instant i = de.atStartOfDay(BRT).toInstant();

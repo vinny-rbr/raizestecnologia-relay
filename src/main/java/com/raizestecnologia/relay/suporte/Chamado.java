@@ -123,6 +123,13 @@ public class Chamado {
         return ultimaRespostaEm == null || ultimaMensagemEm.isAfter(ultimaRespostaEm) ? ultimaMensagemEm : null;
     }
 
+    /** último aviso no celular de "chamado parado" (não repete enquanto o cliente continua na mesma espera) */
+    @Column(name = "alerta_em")
+    private Instant alertaEm;
+
+    public Instant getAlertaEm() { return alertaEm; }
+    public void setAlertaEm(Instant v) { this.alertaEm = v; }
+
     public String getAtendidoPor() { return atendidoPor; }
     public void setAtendidoPor(String v) { this.atendidoPor = v; }
     public Instant getAtendidoEm() { return atendidoEm; }

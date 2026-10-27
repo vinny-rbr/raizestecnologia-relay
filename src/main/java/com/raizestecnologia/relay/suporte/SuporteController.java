@@ -131,6 +131,15 @@ public class SuporteController {
         return ResponseEntity.ok(ApiEnvelope.ok(svc.conversa(c)));
     }
 
+    /** GET .../resumo — texto pronto pra colar no grupo (app: aviso de chamado parado). */
+    @GetMapping("/api/admin/suporte/resumo")
+    public ResponseEntity<Map<String, Object>> resumo() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("texto", svc.resumoTexto());
+        out.put("chamados", svc.ativos());
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
+    }
+
     private String quem(Map<String, String> b) {
         String n = b == null ? null : b.get("nome");
         if (n != null && !n.isBlank()) return n.trim();
