@@ -442,7 +442,9 @@ public class SuporteService {
             if (Chamado.ABERTO.equals(c.getStatus()) && c.getAtendidoPor() == null) {
                 sb.append("🔴 Sem atendimento").append(espera == null ? "" : " (esperando há " + espera + ")").append("\n");
             } else {
-                sb.append("🟡 Com ").append(c.getAtendidoPor() == null ? "a equipe" : c.getAtendidoPor())
+                boolean atrasado = (esp != null && Duration.between(esp, agora).toMinutes() >= PARADO_MIN)
+                        || Duration.between(c.getAbertoEm(), agora).toMinutes() >= LONGO_MIN;
+                sb.append(atrasado ? "🔴 Com " : "🟡 Com ").append(c.getAtendidoPor() == null ? "a equipe" : c.getAtendidoPor())
                         .append(espera == null ? "" : ", cliente esperando resposta há " + espera).append("\n");
             }
             String msg = c.getUltimaMensagem() == null ? c.getPrimeiraMensagem() : c.getUltimaMensagem();
