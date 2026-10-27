@@ -107,7 +107,7 @@ public class SuporteService {
 
         if (!m.minha() && !numero.isEmpty()) registrarAutor(numero, m.autorNome(), m.grupoNome(), quando);
 
-        SuporteEquipe membro = m.minha() ? new SuporteEquipe("", cfg(CFG_MEU_NOME), "TECNICO") : equipe.findById(numero).orElse(null);
+        SuporteEquipe membro = m.minha() ? new SuporteEquipe("", cfg(CFG_MEU_NOME), "TECNICO") : membroDaEquipe(numero);
         if (membro != null) {
             // equipe: não abre chamado. Comercial não atende; técnico: o ÚLTIMO que escreve assume o chamado
             // (ex.: Emerson manda "um momento, já vamos atender" e depois outro técnico entra e assume).
@@ -145,6 +145,17 @@ public class SuporteService {
         c.setAbertoEm(quando);
         chamados.save(c);
         log.info("[suporte] chamado aberto: {} ({})", m.grupoNome(), m.autorNome());
+    }
+
+    /** Procura o número na equipe com e sem o 9 do celular (o WhatsApp usa os dois: 5596991139863 / 559691139863). */
+    private SuporteEquipe membroDaEquipe(String numero) {
+        if (numero == null || numero.isEmpty()) return null;
+        Optional<SuporteEquipe> e = equipe.findById(numero);
+        if (e.isEmpty() && numero.startsWith("55") && numero.length() == 13 && numero.charAt(4) == '9')
+            e = equipe.findById(numero.substring(0, 4) + numero.substring(5));
+        if (e.isEmpty() && numero.startsWith("55") && numero.length() == 12)
+            e = equipe.findById(numero.substring(0, 4) + "9" + numero.substring(4));
+        return e.orElse(null);
     }
 
     private void registrarAutor(String numero, String nome, String grupo, Instant quando) {
