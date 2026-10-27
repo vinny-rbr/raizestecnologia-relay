@@ -123,6 +123,16 @@ public class SuporteController {
         return ResponseEntity.ok(ApiEnvelope.ok(svc.json(c)));
     }
 
+    /** POST .../descartar — chamado aberto de brincadeira/por engano: some da TV e dos relatórios. */
+    @PostMapping("/api/admin/suporte/chamados/{id}/descartar")
+    public ResponseEntity<Map<String, Object>> descartar(@PathVariable Long id, @RequestBody(required = false) Map<String, String> b) {
+        Chamado c = chamados.findById(id).orElse(null);
+        if (c == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Chamado não encontrado"));
+        svc.descartar(c, quem(b), Instant.now());
+        chamados.save(c);
+        return ResponseEntity.ok(ApiEnvelope.ok(svc.json(c)));
+    }
+
     /** GET .../chamados/{id}/conversa — mensagens do chamado e o resumo (relatório: clicar no chamado). */
     @GetMapping("/api/admin/suporte/chamados/{id}/conversa")
     public ResponseEntity<Map<String, Object>> conversa(@PathVariable Long id) {

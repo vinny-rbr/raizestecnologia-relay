@@ -24,6 +24,8 @@ public class Chamado {
     public static final String ABERTO = "ABERTO";
     public static final String ATENDIMENTO = "ATENDIMENTO";
     public static final String FINALIZADO = "FINALIZADO";
+    /** aberto de brincadeira/por engano: some da TV e dos relatórios (finalizadoPor/Em = quem descartou e quando) */
+    public static final String DESCARTADO = "DESCARTADO";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

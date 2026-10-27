@@ -183,6 +183,13 @@ public class SuporteService {
         }
         // "ok", 👍, "obrigado" depois de finalizar não abre chamado novo
         if (confirmacao(texto)) return;
+        // quem teve o chamado descartado e segue escrevendo logo depois: vai pro descartado, não abre outro
+        Optional<Chamado> descartado = chamados.findFirstByGrupoIdAndStatusOrderByFinalizadoEmDesc(m.grupoId(), Chamado.DESCARTADO)
+                .filter(d -> d.getFinalizadoEm() != null && d.getFinalizadoEm().isAfter(quando.minusSeconds(30 * 60)));
+        if (descartado.isPresent()) {
+            mensagens.save(new SuporteMensagem(descartado.get().getId(), m.autorNome(), false, texto, quando));
+            return;
+        }
         Chamado c = new Chamado();
         c.setGrupoId(m.grupoId());
         c.setGrupoNome(m.grupoNome());
@@ -196,6 +203,7 @@ public class SuporteService {
         c.setRetornoDe(retornoDe(m.grupoId(), quando));
         if (c.getRetornoDe() == null && !numero.isEmpty()) // mesmo cliente chamando por outro grupo (ex.: ADM e WEBPOSTO do mesmo posto)
             c.setRetornoDe(chamados.findFirstByClienteNumeroAndAbertoEmAfterOrderByAbertoEmDesc(numero, quando.minusSeconds(24 * 3600))
+                    .filter(p -> !Chamado.DESCARTADO.equals(p.getStatus()))
                     .map(Chamado::getId).orElse(null));
         chamados.save(c);
         mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
@@ -287,7 +295,7 @@ public class SuporteService {
     }
 
     public void atender(Chamado c, String nome, Instant quando) {
-        if (Chamado.FINALIZADO.equals(c.getStatus())) return;
+        if (Chamado.FINALIZADO.equals(c.getStatus()) || Chamado.DESCARTADO.equals(c.getStatus())) return;
         c.setStatus(Chamado.ATENDIMENTO);
         c.setAtendidoPor(nome);
         c.setAtendidoEm(quando);
@@ -297,6 +305,13 @@ public class SuporteService {
     public void finalizar(Chamado c, String nome, Instant quando) {
         if (c.getAtendidoPor() == null) atender(c, nome, quando);
         c.setStatus(Chamado.FINALIZADO);
+        c.setFinalizadoPor(nome);
+        c.setFinalizadoEm(quando);
+    }
+
+    /** Chamado de brincadeira/por engano: sai da TV, dos avisos e dos relatórios (fica guardado como DESCARTADO). */
+    public void descartar(Chamado c, String nome, Instant quando) {
+        c.setStatus(Chamado.DESCARTADO);
         c.setFinalizadoPor(nome);
         c.setFinalizadoEm(quando);
     }
@@ -470,7 +485,8 @@ public class SuporteService {
     public Map<String, Object> relatorio(LocalDate de, LocalDate ate, boolean comLista) {
         Instant i = de.atStartOfDay(BRT).toInstant();
         Instant f = ate.plusDays(1).atStartOfDay(BRT).toInstant();
-        List<Chamado> lista = chamados.findByAbertoEmBetweenOrderByAbertoEmDesc(i, f);
+        List<Chamado> todos = chamados.findByAbertoEmBetweenOrderByAbertoEmDesc(i, f);
+        List<Chamado> lista = todos.stream().filter(c -> !Chamado.DESCARTADO.equals(c.getStatus())).toList();
         Map<String, long[]> porAtendente = new HashMap<>(); // nome -> [atendidos, finalizados, somaMinResposta, qtdResposta]
         Map<String, Integer> porGrupo = new HashMap<>();
         Map<String, Integer> porCategoria = new HashMap<>();
@@ -521,6 +537,7 @@ public class SuporteService {
         out.put("total", lista.size());
         out.put("finalizados", finalizados);
         out.put("retornos", retornos);
+        out.put("descartados", todos.size() - lista.size());
         out.put("emAberto", lista.size() - finalizados);
         out.put("mediaRespostaMin", qtdResp == 0 ? null : somaResp / qtdResp);
         out.put("mediaSolucaoMin", qtdSol == 0 ? null : somaSol / qtdSol);
