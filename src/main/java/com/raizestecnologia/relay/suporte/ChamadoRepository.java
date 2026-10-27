@@ -14,6 +14,8 @@ public interface ChamadoRepository extends JpaRepository<Chamado, Long> {
 
     Optional<Chamado> findFirstByGrupoIdAndStatusOrderByFinalizadoEmDesc(String grupoId, String status);
 
+    Optional<Chamado> findFirstByClienteNumeroAndAbertoEmAfterOrderByAbertoEmDesc(String clienteNumero, Instant depois);
+
     List<Chamado> findByStatusInOrderByAbertoEmAsc(Collection<String> status);
 
     List<Chamado> findByAbertoEmBetweenOrderByAbertoEmDesc(Instant de, Instant ate);

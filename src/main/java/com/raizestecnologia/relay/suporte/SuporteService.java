@@ -62,18 +62,22 @@ public class SuporteService {
             if (cfg(CFG_TOKEN) == null) salvarCfg(CFG_TOKEN, aleatorio(32));
             if (cfg(CFG_TV) == null) salvarCfg(CFG_TV, aleatorio(16));
             if (cfg(CFG_MEU_NOME) == null) salvarCfg(CFG_MEU_NOME, "Lucas");
-            if (cfg("retorno_marcado") == null) { // uma vez: marca os retornos dos chamados de antes
+            if (cfg("retorno_marcado2") == null) { // uma vez: marca os retornos dos chamados de antes
                 Map<String, Chamado> ultimoFinalizado = new HashMap<>();
+                Map<String, Chamado> ultimoDoCliente = new HashMap<>();
                 List<Chamado> todos = new ArrayList<>(chamados.findAll());
                 todos.sort(java.util.Comparator.comparing(Chamado::getAbertoEm));
                 for (Chamado c : todos) {
                     Chamado p = ultimoFinalizado.get(c.getGrupoId());
                     if (p != null && p.getFinalizadoEm().isBefore(c.getAbertoEm())
                             && p.getFinalizadoEm().isAfter(c.getAbertoEm().minusSeconds(24 * 3600))) c.setRetornoDe(p.getId());
+                    Chamado q = c.getClienteNumero() == null ? null : ultimoDoCliente.get(c.getClienteNumero());
+                    if (c.getRetornoDe() == null && q != null && q.getAbertoEm().isAfter(c.getAbertoEm().minusSeconds(24 * 3600))) c.setRetornoDe(q.getId());
                     if (c.getFinalizadoEm() != null) ultimoFinalizado.put(c.getGrupoId(), c);
+                    if (c.getClienteNumero() != null && !c.getClienteNumero().isEmpty()) ultimoDoCliente.put(c.getClienteNumero(), c);
                 }
                 chamados.saveAll(todos);
-                salvarCfg("retorno_marcado", "1");
+                salvarCfg("retorno_marcado2", "1");
             }
         } catch (Exception e) {
             log.warn("[suporte] não deu pra preparar as chaves: {}", e.getMessage());
@@ -190,6 +194,9 @@ public class SuporteService {
         c.setAbertoEm(quando);
         c.setCategoria(Categorias.de(texto));
         c.setRetornoDe(retornoDe(m.grupoId(), quando));
+        if (c.getRetornoDe() == null && !numero.isEmpty()) // mesmo cliente chamando por outro grupo (ex.: ADM e WEBPOSTO do mesmo posto)
+            c.setRetornoDe(chamados.findFirstByClienteNumeroAndAbertoEmAfterOrderByAbertoEmDesc(numero, quando.minusSeconds(24 * 3600))
+                    .map(Chamado::getId).orElse(null));
         chamados.save(c);
         mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
         log.info("[suporte] chamado aberto: {} ({})", m.grupoNome(), m.autorNome());
