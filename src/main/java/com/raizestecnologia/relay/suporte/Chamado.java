@@ -1,0 +1,112 @@
+package com.raizestecnologia.relay.suporte;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+
+/**
+ * Chamado de suporte aberto a partir dos grupos "SUP..." do WhatsApp do Lucas: o cliente escreve no grupo e,
+ * se não tem chamado em aberto ali, abre um. A equipe atende (respondendo no grupo, #atendendo ou botão) e
+ * finaliza (#finalizado ou botão). Vai pra TV de suporte e pros relatórios.
+ */
+@Entity
+@Table(name = "suporte_chamado", indexes = {@Index(name = "ix_sup_chamado_status", columnList = "status"),
+        @Index(name = "ix_sup_chamado_aberto", columnList = "aberto_em"),
+        @Index(name = "ix_sup_chamado_grupo", columnList = "grupo_id,status")})
+public class Chamado {
+
+    public static final String ABERTO = "ABERTO";
+    public static final String ATENDIMENTO = "ATENDIMENTO";
+    public static final String FINALIZADO = "FINALIZADO";
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    /** id do grupo no WhatsApp (...@g.us) */
+    @Column(name = "grupo_id", length = 80, nullable = false)
+    private String grupoId;
+
+    @Column(name = "grupo_nome", length = 150)
+    private String grupoNome;
+
+    /** quem abriu (cliente) */
+    @Column(name = "cliente_nome", length = 120)
+    private String clienteNome;
+
+    @Column(name = "cliente_numero", length = 30)
+    private String clienteNumero;
+
+    @Column(name = "primeira_mensagem", length = 500)
+    private String primeiraMensagem;
+
+    @Column(name = "ultima_mensagem", length = 500)
+    private String ultimaMensagem;
+
+    @Column(name = "ultima_mensagem_em")
+    private Instant ultimaMensagemEm;
+
+    @Column(name = "qtd_mensagens", nullable = false)
+    private int qtdMensagens = 1;
+
+    /** ABERTO | ATENDIMENTO | FINALIZADO */
+    @Column(name = "status", length = 15, nullable = false)
+    private String status = ABERTO;
+
+    @Column(name = "aberto_em", nullable = false)
+    private Instant abertoEm = Instant.now();
+
+    /** primeira mensagem da equipe no grupo depois que o chamado abriu (tempo de resposta) */
+    @Column(name = "primeira_resposta_em")
+    private Instant primeiraRespostaEm;
+
+    @Column(name = "atendido_por", length = 80)
+    private String atendidoPor;
+
+    @Column(name = "atendido_em")
+    private Instant atendidoEm;
+
+    @Column(name = "finalizado_por", length = 80)
+    private String finalizadoPor;
+
+    @Column(name = "finalizado_em")
+    private Instant finalizadoEm;
+
+    public Long getId() { return id; }
+    public String getGrupoId() { return grupoId; }
+    public void setGrupoId(String v) { this.grupoId = v; }
+    public String getGrupoNome() { return grupoNome; }
+    public void setGrupoNome(String v) { this.grupoNome = v; }
+    public String getClienteNome() { return clienteNome; }
+    public void setClienteNome(String v) { this.clienteNome = v; }
+    public String getClienteNumero() { return clienteNumero; }
+    public void setClienteNumero(String v) { this.clienteNumero = v; }
+    public String getPrimeiraMensagem() { return primeiraMensagem; }
+    public void setPrimeiraMensagem(String v) { this.primeiraMensagem = v; }
+    public String getUltimaMensagem() { return ultimaMensagem; }
+    public void setUltimaMensagem(String v) { this.ultimaMensagem = v; }
+    public Instant getUltimaMensagemEm() { return ultimaMensagemEm; }
+    public void setUltimaMensagemEm(Instant v) { this.ultimaMensagemEm = v; }
+    public int getQtdMensagens() { return qtdMensagens; }
+    public void setQtdMensagens(int v) { this.qtdMensagens = v; }
+    public String getStatus() { return status; }
+    public void setStatus(String v) { this.status = v; }
+    public Instant getAbertoEm() { return abertoEm; }
+    public void setAbertoEm(Instant v) { this.abertoEm = v; }
+    public Instant getPrimeiraRespostaEm() { return primeiraRespostaEm; }
+    public void setPrimeiraRespostaEm(Instant v) { this.primeiraRespostaEm = v; }
+    public String getAtendidoPor() { return atendidoPor; }
+    public void setAtendidoPor(String v) { this.atendidoPor = v; }
+    public Instant getAtendidoEm() { return atendidoEm; }
+    public void setAtendidoEm(Instant v) { this.atendidoEm = v; }
+    public String getFinalizadoPor() { return finalizadoPor; }
+    public void setFinalizadoPor(String v) { this.finalizadoPor = v; }
+    public Instant getFinalizadoEm() { return finalizadoEm; }
+    public void setFinalizadoEm(Instant v) { this.finalizadoEm = v; }
+}
