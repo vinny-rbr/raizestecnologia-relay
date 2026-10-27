@@ -353,6 +353,7 @@ public class SuporteService {
 
     static final long PARADO_MIN = 10;   // cliente esperando há 10 min → avisa
     static final long REPETE_MIN = 30;   // continua parado → avisa de novo a cada 30 min
+    static final long LONGO_MIN = 15;    // chamado aberto há 15 min → avisa (uma vez)
 
     @org.springframework.beans.factory.annotation.Autowired
     private com.raizestecnologia.relay.push.FcmSender fcm;
@@ -368,15 +369,18 @@ public class SuporteService {
         if (!fcm.enabled()) return;
         Instant agora = Instant.now();
         List<Chamado> novos = new ArrayList<>();
+        Set<Long> longos = new java.util.HashSet<>(); // aberto há 15+ min (mesmo com o técnico respondendo): avisa uma vez
         for (Chamado c : chamados.findByStatusInOrderByAbertoEmAsc(ATIVOS)) {
             Instant esp = c.esperandoDesde();
-            if (esp == null || esp.isAfter(agora.minusSeconds(PARADO_MIN * 60))) continue;
             Instant ult = c.getAlertaEm();
-            if (ult != null && ult.isAfter(esp) && ult.isAfter(agora.minusSeconds(REPETE_MIN * 60))) continue;
-            novos.add(c);
+            boolean parado = esp != null && !esp.isAfter(agora.minusSeconds(PARADO_MIN * 60))
+                    && !(ult != null && ult.isAfter(esp) && ult.isAfter(agora.minusSeconds(REPETE_MIN * 60)));
+            boolean longo = !c.isAlertaLongo() && !c.getAbertoEm().isAfter(agora.minusSeconds(LONGO_MIN * 60));
+            if (longo) { c.setAlertaLongo(true); if (!parado) longos.add(c.getId()); }
+            if (parado || longo) novos.add(c);
         }
         if (novos.isEmpty()) return;
-        novos.forEach(c -> c.setAlertaEm(agora));
+        novos.stream().filter(c -> !longos.contains(c.getId())).forEach(c -> c.setAlertaEm(agora));
         chamados.saveAll(novos);
         List<Long> donos = users.findByRoleIgnoreCaseAndAtivoTrue("DONO").stream()
                 .map(com.raizestecnologia.relay.auth.AppUser::getId).toList();
@@ -384,8 +388,9 @@ public class SuporteService {
                 .map(com.raizestecnologia.relay.push.DeviceToken::getToken).distinct().toList();
         String titulo = novos.size() == 1 ? "⏰ Chamado parado: " + grupoCurto(novos.get(0).getGrupoNome())
                 : "⏰ " + novos.size() + " chamados parados no suporte";
-        String corpo = String.join("\n", novos.stream().map(c -> grupoCurto(c.getGrupoNome()) + ": esperando há "
-                + duracao(Duration.between(c.esperandoDesde(), agora).toMinutes())).toList());
+        String corpo = String.join("\n", novos.stream().map(c -> grupoCurto(c.getGrupoNome()) + (longos.contains(c.getId())
+                ? ": aberto há " + duracao(Duration.between(c.getAbertoEm(), agora).toMinutes())
+                : ": esperando há " + duracao(Duration.between(c.esperandoDesde(), agora).toMinutes()))).toList());
         fcm.sendToTokens(toks, titulo, corpo, Map.of("tipo", "suporte"));
         log.info("[suporte] aviso de chamado parado: {}", corpo.replace("\n", " | "));
     }

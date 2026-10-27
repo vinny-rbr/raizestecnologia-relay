@@ -130,6 +130,13 @@ public class Chamado {
     public Instant getAlertaEm() { return alertaEm; }
     public void setAlertaEm(Instant v) { this.alertaEm = v; }
 
+    /** já avisou no celular que o chamado passou de 15 min aberto */
+    @Column(name = "alerta_longo")
+    private Boolean alertaLongo;
+
+    public boolean isAlertaLongo() { return Boolean.TRUE.equals(alertaLongo); }
+    public void setAlertaLongo(boolean v) { this.alertaLongo = v; }
+
     /** o técnico escreveu primeiro no grupo (contato ativo): não entra na média de tempo de resposta */
     @Column(name = "iniciado_pela_equipe")
     private Boolean iniciadoPelaEquipe;
