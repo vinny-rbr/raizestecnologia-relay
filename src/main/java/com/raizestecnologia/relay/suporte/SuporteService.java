@@ -42,11 +42,14 @@ public class SuporteService {
     private final ChamadoRepository chamados;
     private final SuporteEquipeRepository equipe;
     private final SuporteConfigRepository config;
+    private final SuporteAutorRepository autores;
 
-    public SuporteService(ChamadoRepository chamados, SuporteEquipeRepository equipe, SuporteConfigRepository config) {
+    public SuporteService(ChamadoRepository chamados, SuporteEquipeRepository equipe, SuporteConfigRepository config,
+                          SuporteAutorRepository autores) {
         this.chamados = chamados;
         this.equipe = equipe;
         this.config = config;
+        this.autores = autores;
     }
 
     /** Gera as chaves do conector e da TV na primeira vez (ficam no banco; o painel mostra). */
@@ -102,18 +105,20 @@ public class SuporteService {
         String numero = m.autorNumero() == null ? "" : m.autorNumero().replaceAll("\\D", "");
         Optional<Chamado> aberto = chamados.findFirstByGrupoIdAndStatusInOrderByAbertoEmDesc(m.grupoId(), ATIVOS);
 
-        String nomeEquipe = m.minha() ? cfg(CFG_MEU_NOME) : equipe.findById(numero).map(SuporteEquipe::getNome).orElse(null);
-        if (nomeEquipe != null) {
-            // equipe: não abre chamado; responde / atende / finaliza o que estiver aberto no grupo
-            if (aberto.isEmpty()) return;
+        if (!m.minha() && !numero.isEmpty()) registrarAutor(numero, m.autorNome(), m.grupoNome(), quando);
+
+        SuporteEquipe membro = m.minha() ? new SuporteEquipe("", cfg(CFG_MEU_NOME), "TECNICO") : equipe.findById(numero).orElse(null);
+        if (membro != null) {
+            // equipe: não abre chamado. Comercial não atende; técnico: o ÚLTIMO que escreve assume o chamado
+            // (ex.: Emerson manda "um momento, já vamos atender" e depois outro técnico entra e assume).
+            if (aberto.isEmpty() || !membro.isTecnico()) return;
             Chamado c = aberto.get();
             String cmd = comando(texto);
             if (c.getPrimeiraRespostaEm() == null && quando.isAfter(c.getAbertoEm())) c.setPrimeiraRespostaEm(quando);
             if ("FINALIZAR".equals(cmd)) {
-                finalizar(c, nomeEquipe, quando);
-            } else if ("ATENDER".equals(cmd) || c.getAtendidoPor() == null) {
-                // respondeu primeiro no grupo fica como atendente; o comando de atender passa o chamado pra quem mandou
-                atender(c, nomeEquipe, quando);
+                finalizar(c, membro.getNome(), quando);
+            } else if (!membro.getNome().equals(c.getAtendidoPor())) {
+                atender(c, membro.getNome(), quando);
             }
             chamados.save(c);
             return;
@@ -140,6 +145,19 @@ public class SuporteService {
         c.setAbertoEm(quando);
         chamados.save(c);
         log.info("[suporte] chamado aberto: {} ({})", m.grupoNome(), m.autorNome());
+    }
+
+    private void registrarAutor(String numero, String nome, String grupo, Instant quando) {
+        try {
+            SuporteAutor a = autores.findById(numero).orElseGet(() -> new SuporteAutor(numero));
+            if (nome != null && !nome.isBlank()) a.setNome(nome);
+            a.setUltimoGrupo(grupo);
+            a.setUltimaVez(quando);
+            a.setMensagens(a.getMensagens() + 1);
+            autores.save(a);
+        } catch (Exception e) {
+            log.debug("[suporte] autor: {}", e.getMessage());
+        }
     }
 
     /**

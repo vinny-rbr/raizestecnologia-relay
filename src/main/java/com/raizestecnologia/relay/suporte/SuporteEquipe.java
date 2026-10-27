@@ -18,14 +18,21 @@ public class SuporteEquipe {
     @Column(name = "nome", length = 80, nullable = false)
     private String nome;
 
+    /** TECNICO (atende e assume chamado) | COMERCIAL (só não abre chamado). null = técnico. */
+    @Column(name = "funcao", length = 15)
+    private String funcao;
+
     public SuporteEquipe() {}
 
-    public SuporteEquipe(String numero, String nome) {
+    public SuporteEquipe(String numero, String nome, String funcao) {
         this.numero = numero;
         this.nome = nome;
+        this.funcao = funcao;
     }
 
     public String getNumero() { return numero; }
     public String getNome() { return nome; }
     public void setNome(String v) { this.nome = v; }
+    public String getFuncao() { return "COMERCIAL".equals(funcao) ? "COMERCIAL" : "TECNICO"; }
+    public boolean isTecnico() { return !"COMERCIAL".equals(funcao); }
 }

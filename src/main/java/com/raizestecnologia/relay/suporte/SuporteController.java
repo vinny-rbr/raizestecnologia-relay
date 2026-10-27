@@ -142,19 +142,42 @@ public class SuporteController {
     @GetMapping("/api/admin/suporte/equipe")
     public ResponseEntity<Map<String, Object>> equipe() {
         List<Map<String, Object>> out = equipe.findAll().stream()
-                .map(e -> Map.<String, Object>of("numero", e.getNumero(), "nome", e.getNome())).toList();
+                .map(e -> Map.<String, Object>of("numero", e.getNumero(), "nome", e.getNome(), "funcao", e.getFuncao())).toList();
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
-    /** POST .../equipe {numero, nome} — número com DDD (o 55 do Brasil entra sozinho). */
+    /** POST .../equipe {numero, nome, funcao: TECNICO|COMERCIAL} — número com DDD (o 55 do Brasil entra sozinho). */
     @PostMapping("/api/admin/suporte/equipe")
     public ResponseEntity<Map<String, Object>> salvarEquipe(@RequestBody Map<String, String> b) {
         String num = b.getOrDefault("numero", "").replaceAll("\\D", "");
         String nome = b.getOrDefault("nome", "").trim();
+        String funcao = "COMERCIAL".equalsIgnoreCase(b.get("funcao")) ? "COMERCIAL" : "TECNICO";
         if (num.length() < 10 || nome.isEmpty()) return ResponseEntity.status(400).body(ApiEnvelope.fail("Informe nome e número com DDD"));
-        if (!num.startsWith("55") || num.length() <= 11) num = "55" + num;
-        equipe.save(new SuporteEquipe(num, nome));
-        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("numero", num, "nome", nome)));
+        if (num.length() <= 11) num = "55" + num; // número brasileiro sem o 55 (ids do WhatsApp mais longos ficam como vieram)
+        equipe.save(new SuporteEquipe(num, nome, funcao));
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("numero", num, "nome", nome, "funcao", funcao)));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private SuporteAutorRepository autores;
+
+    /** GET .../autores — quem escreveu nos grupos SUP e ainda não está na equipe (pra marcar técnico/comercial). */
+    @GetMapping("/api/admin/suporte/autores")
+    public ResponseEntity<Map<String, Object>> autores() {
+        java.util.Set<String> naEquipe = new java.util.HashSet<>();
+        equipe.findAll().forEach(e -> naEquipe.add(e.getNumero()));
+        List<Map<String, Object>> out = autores.findTop300ByOrderByUltimaVezDesc().stream()
+                .filter(a -> !naEquipe.contains(a.getNumero()))
+                .map(a -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("numero", a.getNumero());
+                    m.put("nome", a.getNome());
+                    m.put("grupo", a.getUltimoGrupo());
+                    m.put("ultimaVez", a.getUltimaVez() == null ? null : a.getUltimaVez().toString());
+                    m.put("mensagens", a.getMensagens());
+                    return m;
+                }).toList();
+        return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
     @DeleteMapping("/api/admin/suporte/equipe/{numero}")
