@@ -183,11 +183,30 @@ public class SaudeService {
         return ok.isEmpty() || ok.get().getCriadoEm().isBefore(marcado.get().getResolvendoEm());
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.loja.LojaRepository lojasRepo;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.raizestecnologia.relay.revenda.RevendaRepository revendas;
+
+    /** Usuarios (app) da revenda dona da loja, se ela ligou a Saude nessa loja. */
+    private List<Long> usuariosRevenda(String cnpj) {
+        try {
+            var l = lojasRepo.findById(cnpj).orElse(null);
+            if (l == null || l.getRevendaCodigo() == null || !l.temRecurso(com.raizestecnologia.relay.loja.Recursos.SAUDE)) return List.of();
+            var r = revendas.findByCodigo(l.getRevendaCodigo()).orElse(null);
+            if (r == null) return List.of();
+            return users.findByRevendaId(r.getId()).stream().filter(AppUser::isAtivo).map(AppUser::getId).toList();
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
     private void avisarMaster(EventoLoja e) {
         if (!fcm.enabled()) return;
-        List<Long> donos = users.findByRoleIgnoreCaseAndAtivoTrue("DONO").stream().map(AppUser::getId).toList();
+        List<Long> donos = new java.util.ArrayList<>(users.findByRoleIgnoreCaseAndAtivoTrue("DONO").stream().map(AppUser::getId).toList());
+        donos.addAll(usuariosRevenda(e.getLoja()));
         if (donos.isEmpty()) return;
-        List<String> toks = tokens.findByUserIdIn(donos).stream().map(DeviceToken::getToken).toList();
+        List<String> toks = tokens.findByUserIdIn(donos).stream().map(DeviceToken::getToken).distinct().toList();
         String loja = e.getLojaNome() == null || e.getLojaNome().isBlank() ? e.getLoja() : e.getLojaNome();
         String icone = "grave".equals(e.getNivel()) ? "🔴 " : "ok".equals(e.getNivel()) ? "🟢 " : "🟠 ";
         fcm.sendToTokens(toks, icone + loja + ": " + e.getTitulo(), e.getDetalhe() == null ? "" : e.getDetalhe(),

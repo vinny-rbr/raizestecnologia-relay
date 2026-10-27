@@ -26,4 +26,6 @@ public interface EventoLojaRepository extends JpaRepository<EventoLoja, Long> {
 
     /** Eventos da janela, pra montar pendentes e o relatório. */
     List<EventoLoja> findByCriadoEmAfterOrderByCriadoEmAsc(Instant depois);
+
+    List<EventoLoja> findByLojaInOrderByCriadoEmDesc(java.util.Collection<String> lojas, org.springframework.data.domain.Pageable p);
 }

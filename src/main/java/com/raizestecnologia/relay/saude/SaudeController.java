@@ -12,18 +12,44 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** GET /api/admin/saude — histórico de eventos de rede das lojas (só o master/DONO: /api/admin/**). */
+/**
+ * Histórico de eventos de rede das lojas. /api/admin/saude = master (vê todas); /api/saude-lojas = revenda, que vê
+ * só as lojas dela com a Saúde ligada (recurso "saude", +R$10/mês na mensalidade da loja).
+ */
 @RestController
-@RequestMapping("/api/admin/saude")
+@RequestMapping({"/api/admin/saude", "/api/saude-lojas"})
 public class SaudeController {
 
     private final EventoLojaRepository repo;
     private final com.raizestecnologia.relay.auth.AppUserRepository users;
+    private final com.raizestecnologia.relay.loja.LojaRepository lojas;
 
-    public SaudeController(EventoLojaRepository repo, com.raizestecnologia.relay.auth.AppUserRepository users) {
+    public SaudeController(EventoLojaRepository repo, com.raizestecnologia.relay.auth.AppUserRepository users,
+                           com.raizestecnologia.relay.loja.LojaRepository lojas) {
         this.repo = repo;
         this.users = users;
+        this.lojas = lojas;
     }
+
+    /** Lojas que o usuário pode ver na Saúde: null = todas (master); revenda = as dela com a Saúde ligada. */
+    private java.util.Set<String> permitidas() {
+        var p = com.raizestecnologia.relay.auth.CurrentUser.get();
+        if (p == null) return java.util.Set.of();
+        if (p.isDono()) return null;
+        java.util.Set<String> out = new java.util.HashSet<>();
+        if (p.isRevenda()) {
+            for (var l : lojas.findByRevendaCodigoOrderByAtualizadoEmDesc(p.revendaCodigo()))
+                if (l.temRecurso(com.raizestecnologia.relay.loja.Recursos.SAUDE)) out.add(l.getCnpj());
+        }
+        return out;
+    }
+
+    private static boolean pode(java.util.Set<String> ok, String loja) {
+        return ok == null || ok.contains(loja);
+    }
+
+    private static final ResponseEntity<Map<String, Object>> SEM_PERMISSAO =
+            ResponseEntity.status(403).body(ApiEnvelope.fail("Sem permissão para esta loja"));
 
     /** POST /api/admin/saude/{id}/resolvendo {resolvendo:true|false} — "estou resolvendo": para os avisos desse problema. */
     @org.springframework.web.bind.annotation.PostMapping("/{id}/resolvendo")
@@ -31,6 +57,7 @@ public class SaudeController {
                                                           @org.springframework.web.bind.annotation.RequestBody(required = false) Map<String, Object> body) {
         EventoLoja e = repo.findById(id).orElse(null);
         if (e == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Evento não encontrado"));
+        if (!pode(permitidas(), e.getLoja())) return SEM_PERMISSAO;
         boolean marcar = body == null || !Boolean.FALSE.equals(body.get("resolvendo"));
         var p = com.raizestecnologia.relay.auth.CurrentUser.get();
         String quem = p == null ? "" : p.email();
@@ -51,6 +78,7 @@ public class SaudeController {
     public ResponseEntity<Map<String, Object>> resolvido(@org.springframework.web.bind.annotation.PathVariable Long id) {
         EventoLoja e = repo.findById(id).orElse(null);
         if (e == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Evento não encontrado"));
+        if (!pode(permitidas(), e.getLoja())) return SEM_PERMISSAO;
         var p = com.raizestecnologia.relay.auth.CurrentUser.get();
         String quem = p == null ? "" : p.email();
         try {
@@ -74,9 +102,11 @@ public class SaudeController {
     /** GET /api/admin/saude/pendentes — problemas ainda abertos (o último evento do problema não é "voltou"). */
     @GetMapping("/pendentes")
     public ResponseEntity<Map<String, Object>> pendentes() {
+        java.util.Set<String> ok = permitidas();
         Map<String, EventoLoja> ultimo = new java.util.LinkedHashMap<>();
         Map<String, java.time.Instant> desde = new java.util.HashMap<>();
         for (EventoLoja e : repo.findByCriadoEmAfterOrderByCriadoEmAsc(java.time.Instant.now().minus(java.time.Duration.ofDays(30)))) {
+            if (!pode(ok, e.getLoja())) continue;
             String k = e.getLoja() + "|" + e.getChave();
             EventoLoja ant = ultimo.get(k);
             if (!"ok".equals(e.getNivel()) && (ant == null || "ok".equals(ant.getNivel()))) desde.put(k, e.getCriadoEm());
@@ -124,7 +154,9 @@ public class SaudeController {
         Map<String, Integer> porDia = new java.util.TreeMap<>();
         java.time.LocalDate hoje = java.time.LocalDate.now(brt);
         for (int i = d - 1; i >= 0; i--) porDia.put(hoje.minusDays(i).toString(), 0);
+        java.util.Set<String> ok = permitidas();
         for (EventoLoja e : repo.findByCriadoEmAfterOrderByCriadoEmAsc(java.time.Instant.now().minus(java.time.Duration.ofDays(d)))) {
+            if (!pode(ok, e.getLoja())) continue;
             String k = e.getLoja() + "|" + e.getChave();
             EventoLoja ant = ultimo.get(k);
             ultimo.put(k, e);
@@ -179,9 +211,20 @@ public class SaudeController {
     @GetMapping
     public ResponseEntity<Map<String, Object>> lista(@RequestParam(required = false) String loja,
                                                      @RequestParam(defaultValue = "150") int limite) {
+        java.util.Set<String> permitidas = permitidas();
         PageRequest p = PageRequest.of(0, Math.max(1, Math.min(500, limite)));
-        List<EventoLoja> ev = loja == null || loja.isBlank() ? repo.findByOrderByCriadoEmDesc(p)
-                : repo.findByLojaOrderByCriadoEmDesc(loja.replaceAll("\\D", ""), p);
+        List<EventoLoja> ev;
+        if (loja != null && !loja.isBlank()) {
+            String c = loja.replaceAll("\\D", "");
+            if (!pode(permitidas, c)) return SEM_PERMISSAO;
+            ev = repo.findByLojaOrderByCriadoEmDesc(c, p);
+        } else if (permitidas == null) {
+            ev = repo.findByOrderByCriadoEmDesc(p);
+        } else if (permitidas.isEmpty()) {
+            ev = List.of();
+        } else {
+            ev = repo.findByLojaInOrderByCriadoEmDesc(permitidas, p);
+        }
         // situação de cada problema: resolvido (veio "voltou" depois) / resolvendo (alguém marcou)
         Map<String, java.time.Instant> okMaisRecente = new java.util.HashMap<>();
         Map<String, EventoLoja> marcado = new java.util.HashMap<>();

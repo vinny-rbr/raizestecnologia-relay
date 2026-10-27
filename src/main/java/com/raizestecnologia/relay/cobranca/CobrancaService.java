@@ -452,9 +452,13 @@ public class CobrancaService {
         return m;
     }
 
-    /** Quanto a revenda paga agora por esta loja (R$30 ou o proporcional de R$20). */
+    /** Adicional da Saude da loja pra revenda (recurso "saude" ligado na loja). */
+    public static final double SAUDE_REVENDA = 10.0;
+
+    /** Quanto a revenda paga agora por esta loja (R$30 ou o proporcional de R$20), + R$10 se a Saude estiver ligada. */
     public static double valorRevenda(Loja l) {
-        return l.getRevendaValorProximo() != null ? l.getRevendaValorProximo() : mensalidadeRevenda(l.getRevendaCodigo());
+        double base = l.getRevendaValorProximo() != null ? l.getRevendaValorProximo() : mensalidadeRevenda(l.getRevendaCodigo());
+        return round2(base + (l.temRecurso(com.raizestecnologia.relay.loja.Recursos.SAUDE) ? SAUDE_REVENDA : 0));
     }
 
     /** 1º pagamento da loja de revenda, pelo dia em que fechou o cliente (ativação):

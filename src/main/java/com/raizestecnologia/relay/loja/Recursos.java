@@ -13,7 +13,9 @@ public final class Recursos {
     public static final String FORCA_VENDAS = "forca_vendas";
     /** Estudio de Etiquetas (Host): layout das etiquetas de gondola e impressao pelo painel. */
     public static final String ETIQUETAS = "etiquetas";
-    public static final Set<String> TODOS = Set.of(SALAO, PAINEL_TV, FORCA_VENDAS, ETIQUETAS);
+    /** Saude da loja pra revenda (avisos de agente/impressora caindo): +R$10/mes na mensalidade da loja. */
+    public static final String SAUDE = "saude";
+    public static final Set<String> TODOS = Set.of(SALAO, PAINEL_TV, FORCA_VENDAS, ETIQUETAS, SAUDE);
 
     private Recursos() {}
 
@@ -22,6 +24,7 @@ public final class Recursos {
         if (PAINEL_TV.equals(r)) return "Painel TV";
         if (FORCA_VENDAS.equals(r)) return "Forca de vendas";
         if (ETIQUETAS.equals(r)) return "Estudio de Impressao";
+        if (SAUDE.equals(r)) return "Saude da loja";
         return r;
     }
 
