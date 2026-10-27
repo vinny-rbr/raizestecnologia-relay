@@ -123,6 +123,14 @@ public class SuporteController {
         return ResponseEntity.ok(ApiEnvelope.ok(svc.json(c)));
     }
 
+    /** GET .../chamados/{id}/conversa — mensagens do chamado e o resumo (relatório: clicar no chamado). */
+    @GetMapping("/api/admin/suporte/chamados/{id}/conversa")
+    public ResponseEntity<Map<String, Object>> conversa(@PathVariable Long id) {
+        Chamado c = chamados.findById(id).orElse(null);
+        if (c == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Chamado não encontrado"));
+        return ResponseEntity.ok(ApiEnvelope.ok(svc.conversa(c)));
+    }
+
     private String quem(Map<String, String> b) {
         String n = b == null ? null : b.get("nome");
         if (n != null && !n.isBlank()) return n.trim();

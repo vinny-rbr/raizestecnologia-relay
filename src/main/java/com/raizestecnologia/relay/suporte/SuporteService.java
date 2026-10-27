@@ -43,9 +43,11 @@ public class SuporteService {
     private final SuporteEquipeRepository equipe;
     private final SuporteConfigRepository config;
     private final SuporteAutorRepository autores;
+    private final SuporteMensagemRepository mensagens;
 
     public SuporteService(ChamadoRepository chamados, SuporteEquipeRepository equipe, SuporteConfigRepository config,
-                          SuporteAutorRepository autores) {
+                          SuporteAutorRepository autores, SuporteMensagemRepository mensagens) {
+        this.mensagens = mensagens;
         this.chamados = chamados;
         this.equipe = equipe;
         this.config = config;
@@ -124,6 +126,7 @@ public class SuporteService {
                 atender(c, membro.getNome(), quando);
             }
             chamados.save(c);
+            mensagens.save(new SuporteMensagem(c.getId(), membro.getNome(), true, texto, quando));
             return;
         }
 
@@ -134,6 +137,8 @@ public class SuporteService {
             c.setUltimaMensagem(corta(texto));
             c.setUltimaMensagemEm(quando);
             if (m.grupoNome() != null && !m.grupoNome().isBlank()) c.setGrupoNome(m.grupoNome());
+            mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
+            classificar(c);
             chamados.save(c);
             return;
         }
@@ -146,8 +151,23 @@ public class SuporteService {
         c.setUltimaMensagem(corta(texto));
         c.setUltimaMensagemEm(quando);
         c.setAbertoEm(quando);
+        c.setCategoria(Categorias.de(texto));
         chamados.save(c);
+        mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
         log.info("[suporte] chamado aberto: {} ({})", m.grupoNome(), m.autorNome());
+    }
+
+    /** Tipo de problema pelas primeiras mensagens do cliente (a 1ª às vezes é só "bom dia"). */
+    private void classificar(Chamado c) {
+        StringBuilder b = new StringBuilder();
+        for (SuporteMensagem x : mensagens.findTop8ByChamadoIdAndEquipeFalseOrderByEmAsc(c.getId())) b.append(' ').append(x.getTexto());
+        c.setCategoria(Categorias.de(b.toString()));
+    }
+
+    /** Categoria de chamado antigo (sem mensagens guardadas): pela primeira e última mensagem. */
+    String categoria(Chamado c) {
+        if (c.getCategoria() != null) return c.getCategoria();
+        return Categorias.de((c.getPrimeiraMensagem() == null ? "" : c.getPrimeiraMensagem()) + " " + (c.getUltimaMensagem() == null ? "" : c.getUltimaMensagem()));
     }
 
     /** Procura o número na equipe com e sem o 9 do celular (o WhatsApp usa os dois: 5596991139863 / 559691139863). */
@@ -223,6 +243,7 @@ public class SuporteService {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", c.getId());
         m.put("grupo", c.getGrupoNome());
+        m.put("categoria", categoria(c));
         m.put("cliente", c.getClienteNome());
         m.put("clienteNumero", c.getClienteNumero());
         m.put("primeiraMensagem", c.getPrimeiraMensagem());
@@ -250,6 +271,45 @@ public class SuporteService {
         return a == null || b == null ? null : Math.max(0, Duration.between(a, b).toMinutes());
     }
 
+    /** Conversa do chamado + resumo (problema, quem atendeu, tempo, última resposta do técnico). */
+    public Map<String, Object> conversa(Chamado c) {
+        List<SuporteMensagem> msgs = mensagens.findByChamadoIdOrderByEmAsc(c.getId());
+        List<Map<String, Object>> lista = new ArrayList<>();
+        String solucao = null;
+        StringBuilder problema = new StringBuilder();
+        for (SuporteMensagem x : msgs) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("autor", x.getAutor());
+            m.put("equipe", x.isEquipe());
+            m.put("texto", x.getTexto());
+            m.put("em", x.getEm().toString());
+            lista.add(m);
+            String t = x.getTexto() == null ? "" : x.getTexto().trim();
+            if (!x.isEquipe() && problema.length() < 300 && !saudacao(t)) problema.append(problema.length() > 0 ? " / " : "").append(t);
+            if (x.isEquipe() && !"FINALIZAR".equals(comando(t)) && !t.isEmpty()) solucao = t;
+        }
+        Map<String, Object> resumo = new LinkedHashMap<>();
+        resumo.put("categoria", categoria(c));
+        resumo.put("problema", problema.length() > 0 ? problema.toString() : c.getPrimeiraMensagem());
+        resumo.put("atendidoPor", c.getAtendidoPor());
+        resumo.put("respostaMin", minutos(c.getAbertoEm(), c.getPrimeiraRespostaEm()));
+        resumo.put("solucaoMin", minutos(c.getAbertoEm(), c.getFinalizadoEm()));
+        resumo.put("ultimaRespostaTecnico", solucao);
+        resumo.put("mensagens", msgs.size());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("chamado", json(c));
+        out.put("resumo", resumo);
+        out.put("mensagens", lista);
+        out.put("semHistorico", msgs.isEmpty()); // chamado de antes de guardar as conversas
+        return out;
+    }
+
+    /** "bom dia", "boa tarde", "ok", "obrigado"... não descrevem o problema. */
+    private static boolean saudacao(String t) {
+        String n = normalizar(t).replaceAll("[^a-z ]", "").trim();
+        return n.isEmpty() || n.length() <= 3 || n.matches("(bom dia|boa tarde|boa noite|ola|oi|ok|obrigad[oa]|tudo bem|alguem ai|bom dia pessoal|boa tarde pessoal)( .{0,12})?");
+    }
+
     public List<Map<String, Object>> ativos() {
         return chamados.findByStatusInOrderByAbertoEmAsc(ATIVOS).stream().map(this::json).toList();
     }
@@ -261,9 +321,11 @@ public class SuporteService {
         List<Chamado> lista = chamados.findByAbertoEmBetweenOrderByAbertoEmDesc(i, f);
         Map<String, long[]> porAtendente = new HashMap<>(); // nome -> [atendidos, finalizados, somaMinResposta, qtdResposta]
         Map<String, Integer> porGrupo = new HashMap<>();
+        Map<String, Integer> porCategoria = new HashMap<>();
         long somaResp = 0, qtdResp = 0, somaSol = 0, qtdSol = 0, finalizados = 0;
         for (Chamado c : lista) {
             porGrupo.merge(c.getGrupoNome() == null ? "?" : c.getGrupoNome(), 1, Integer::sum);
+            porCategoria.merge(categoria(c), 1, Integer::sum);
             Long r = minutos(c.getAbertoEm(), c.getPrimeiraRespostaEm());
             if (r != null) { somaResp += r; qtdResp++; }
             Long s = minutos(c.getAbertoEm(), c.getFinalizadoEm());
@@ -299,6 +361,10 @@ public class SuporteService {
         out.put("mediaSolucaoMin", qtdSol == 0 ? null : somaSol / qtdSol);
         out.put("ranking", ranking);
         out.put("porGrupo", grupos);
+        List<Map<String, Object>> cats = new ArrayList<>();
+        porCategoria.entrySet().stream().sorted((x, y) -> y.getValue() - x.getValue())
+                .forEach(e -> cats.add(Map.of("categoria", e.getKey(), "chamados", e.getValue())));
+        out.put("porCategoria", cats);
         if (comLista) out.put("chamados", lista.stream().map(this::json).toList());
         return out;
     }

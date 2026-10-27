@@ -66,6 +66,13 @@ public class Chamado {
     @Column(name = "primeira_resposta_em")
     private Instant primeiraRespostaEm;
 
+    /** tipo de problema (Categorias), pelas mensagens do cliente */
+    @Column(name = "categoria", length = 60)
+    private String categoria;
+
+    public String getCategoria() { return categoria; }
+    public void setCategoria(String v) { this.categoria = v; }
+
     /** última mensagem da equipe no grupo (cliente "esperando" = mandou mensagem depois disso e ninguém respondeu) */
     @Column(name = "ultima_resposta_em")
     private Instant ultimaRespostaEm;
