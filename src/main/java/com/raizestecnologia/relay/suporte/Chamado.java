@@ -130,6 +130,13 @@ public class Chamado {
     public Instant getAlertaEm() { return alertaEm; }
     public void setAlertaEm(Instant v) { this.alertaEm = v; }
 
+    /** o técnico escreveu primeiro no grupo (contato ativo): não entra na média de tempo de resposta */
+    @Column(name = "iniciado_pela_equipe")
+    private Boolean iniciadoPelaEquipe;
+
+    public boolean isIniciadoPelaEquipe() { return Boolean.TRUE.equals(iniciadoPelaEquipe); }
+    public void setIniciadoPelaEquipe(boolean v) { this.iniciadoPelaEquipe = v; }
+
     public String getAtendidoPor() { return atendidoPor; }
     public void setAtendidoPor(String v) { this.atendidoPor = v; }
     public Instant getAtendidoEm() { return atendidoEm; }

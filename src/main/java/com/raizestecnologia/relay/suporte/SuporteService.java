@@ -113,12 +113,31 @@ public class SuporteService {
         // comercial (ex.: Rômulo, dono da empresa) conta como cliente: pode abrir chamado pro cliente, mas nunca atende
         if (membro != null && !membro.isTecnico()) membro = null;
         if (membro != null) {
-            // técnico: não abre chamado; o ÚLTIMO técnico que escreve assume o chamado
+            // o ÚLTIMO técnico que escreve assume o chamado
             // (ex.: Emerson manda "um momento, já vamos atender" e depois outro técnico entra e assume).
-            if (aberto.isEmpty()) return;
-            Chamado c = aberto.get();
             String cmd = comando(texto);
-            if (c.getPrimeiraRespostaEm() == null && quando.isAfter(c.getAbertoEm())) c.setPrimeiraRespostaEm(quando);
+            if (aberto.isEmpty()) {
+                // técnico escreveu primeiro ("irei acessar o servidor"): abre já em atendimento com ele
+                if (cmd != null || confirmacao(texto) || acabouDeFinalizar(m.grupoId(), quando)) return;
+                Chamado c = new Chamado();
+                c.setGrupoId(m.grupoId());
+                c.setGrupoNome(m.grupoNome());
+                c.setPrimeiraMensagem(corta(texto));
+                c.setUltimaMensagem(corta(texto));
+                c.setAbertoEm(quando);
+                c.setIniciadoPelaEquipe(true);
+                c.setStatus(Chamado.ATENDIMENTO);
+                c.setAtendidoPor(membro.getNome());
+                c.setAtendidoEm(quando);
+                c.setUltimaRespostaEm(quando);
+                c.setCategoria(Categorias.de(texto));
+                chamados.save(c);
+                mensagens.save(new SuporteMensagem(c.getId(), membro.getNome(), true, texto, quando));
+                log.info("[suporte] chamado aberto pela equipe: {} ({})", m.grupoNome(), membro.getNome());
+                return;
+            }
+            Chamado c = aberto.get();
+            if (c.getPrimeiraRespostaEm() == null && !c.isIniciadoPelaEquipe() && quando.isAfter(c.getAbertoEm())) c.setPrimeiraRespostaEm(quando);
             c.setUltimaRespostaEm(quando);
             if ("FINALIZAR".equals(cmd)) {
                 finalizar(c, membro.getNome(), quando);
@@ -135,13 +154,17 @@ public class SuporteService {
             Chamado c = aberto.get();
             c.setQtdMensagens(c.getQtdMensagens() + 1);
             c.setUltimaMensagem(corta(texto));
-            c.setUltimaMensagemEm(quando);
+            // "ok", 👍, "obrigado" não é o cliente esperando resposta
+            if (!confirmacao(texto)) c.setUltimaMensagemEm(quando);
+            if (c.getClienteNome() == null) { c.setClienteNome(m.autorNome()); c.setClienteNumero(numero); }
             if (m.grupoNome() != null && !m.grupoNome().isBlank()) c.setGrupoNome(m.grupoNome());
             mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
             classificar(c);
             chamados.save(c);
             return;
         }
+        // "ok", 👍, "obrigado" depois de finalizar não abre chamado novo
+        if (confirmacao(texto)) return;
         Chamado c = new Chamado();
         c.setGrupoId(m.grupoId());
         c.setGrupoNome(m.grupoNome());
@@ -155,6 +178,18 @@ public class SuporteService {
         chamados.save(c);
         mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
         log.info("[suporte] chamado aberto: {} ({})", m.grupoNome(), m.autorNome());
+    }
+
+    /** Só confirmação/agradecimento ("ok", 👍, "obrigado", "valeu", figurinha): não pede nada. */
+    static boolean confirmacao(String t) {
+        String n = normalizar(t == null ? "" : t).replaceAll("\\[(figurinha|reacao)\\]", "").replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
+        return n.isEmpty() || n.matches("(figurinha|reacao|ok|okay|blz|beleza|certo|certinho|show|top|perfeito|ta bom|tá bom|ta|entendi|combinado|valeu|vlw|obg|obrigad[oa]|muito obrigad[oa]|grat[oa]|disponha|por nada|de nada|sim|ss|otimo|joia)( (ok|obrigad[oa]|valeu|entao|pessoal|amigo|amiga|ai|viu|demais))*");
+    }
+
+    /** Equipe mandou mais uma mensagem logo depois de finalizar ("qualquer coisa chama"): não abre outro. */
+    private boolean acabouDeFinalizar(String grupoId, Instant quando) {
+        return chamados.findFirstByGrupoIdAndStatusOrderByFinalizadoEmDesc(grupoId, Chamado.FINALIZADO)
+                .map(Chamado::getFinalizadoEm).filter(f -> f.isAfter(quando.minusSeconds(30 * 60))).isPresent();
     }
 
     /** Tipo de problema pelas primeiras mensagens do cliente (a 1ª às vezes é só "bom dia"). */
@@ -227,7 +262,7 @@ public class SuporteService {
         c.setStatus(Chamado.ATENDIMENTO);
         c.setAtendidoPor(nome);
         c.setAtendidoEm(quando);
-        if (c.getPrimeiraRespostaEm() == null) c.setPrimeiraRespostaEm(quando);
+        if (c.getPrimeiraRespostaEm() == null && !c.isIniciadoPelaEquipe()) c.setPrimeiraRespostaEm(quando);
     }
 
     public void finalizar(Chamado c, String nome, Instant quando) {
