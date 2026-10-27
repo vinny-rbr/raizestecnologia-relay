@@ -78,6 +78,13 @@ public class SuporteController {
         out.put("hoje", svc.relatorio(hoje, hoje, false));
         out.put("conector", conectorOnline());
         out.put("agora", Instant.now().toString());
+        // técnicos (pro ranking da TV mostrar todo mundo, inclusive quem ainda está com 0)
+        List<String> tecnicos = new java.util.ArrayList<>();
+        String dono = svc.cfg(SuporteService.CFG_MEU_NOME);
+        if (dono != null && !dono.isBlank()) tecnicos.add(dono);
+        equipe.findAll().stream().filter(SuporteEquipe::isTecnico).map(SuporteEquipe::getNome)
+                .filter(n -> !tecnicos.contains(n)).forEach(tecnicos::add);
+        out.put("tecnicos", tecnicos);
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
