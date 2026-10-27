@@ -130,6 +130,13 @@ public class Chamado {
     public Instant getAlertaEm() { return alertaEm; }
     public void setAlertaEm(Instant v) { this.alertaEm = v; }
 
+    /** o mesmo grupo já teve um chamado finalizado nas últimas 24h: este é um retorno daquele (id) */
+    @Column(name = "retorno_de")
+    private Long retornoDe;
+
+    public Long getRetornoDe() { return retornoDe; }
+    public void setRetornoDe(Long v) { this.retornoDe = v; }
+
     /** já avisou no celular que o chamado passou de 15 min aberto */
     @Column(name = "alerta_longo")
     private Boolean alertaLongo;

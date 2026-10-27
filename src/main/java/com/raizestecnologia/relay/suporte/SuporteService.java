@@ -62,6 +62,19 @@ public class SuporteService {
             if (cfg(CFG_TOKEN) == null) salvarCfg(CFG_TOKEN, aleatorio(32));
             if (cfg(CFG_TV) == null) salvarCfg(CFG_TV, aleatorio(16));
             if (cfg(CFG_MEU_NOME) == null) salvarCfg(CFG_MEU_NOME, "Lucas");
+            if (cfg("retorno_marcado") == null) { // uma vez: marca os retornos dos chamados de antes
+                Map<String, Chamado> ultimoFinalizado = new HashMap<>();
+                List<Chamado> todos = new ArrayList<>(chamados.findAll());
+                todos.sort(java.util.Comparator.comparing(Chamado::getAbertoEm));
+                for (Chamado c : todos) {
+                    Chamado p = ultimoFinalizado.get(c.getGrupoId());
+                    if (p != null && p.getFinalizadoEm().isBefore(c.getAbertoEm())
+                            && p.getFinalizadoEm().isAfter(c.getAbertoEm().minusSeconds(24 * 3600))) c.setRetornoDe(p.getId());
+                    if (c.getFinalizadoEm() != null) ultimoFinalizado.put(c.getGrupoId(), c);
+                }
+                chamados.saveAll(todos);
+                salvarCfg("retorno_marcado", "1");
+            }
         } catch (Exception e) {
             log.warn("[suporte] não deu pra preparar as chaves: {}", e.getMessage());
         }
@@ -126,6 +139,7 @@ public class SuporteService {
                 c.setUltimaMensagem(corta(texto));
                 c.setAbertoEm(quando);
                 c.setIniciadoPelaEquipe(true);
+                c.setRetornoDe(retornoDe(m.grupoId(), quando));
                 c.setStatus(Chamado.ATENDIMENTO);
                 c.setAtendidoPor(membro.getNome());
                 c.setAtendidoEm(quando);
@@ -175,6 +189,7 @@ public class SuporteService {
         c.setUltimaMensagemEm(quando);
         c.setAbertoEm(quando);
         c.setCategoria(Categorias.de(texto));
+        c.setRetornoDe(retornoDe(m.grupoId(), quando));
         chamados.save(c);
         mensagens.save(new SuporteMensagem(c.getId(), m.autorNome(), false, texto, quando));
         log.info("[suporte] chamado aberto: {} ({})", m.grupoNome(), m.autorNome());
@@ -184,6 +199,13 @@ public class SuporteService {
     static boolean confirmacao(String t) {
         String n = normalizar(t == null ? "" : t).replaceAll("\\[(figurinha|reacao)\\]", "").replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
         return n.isEmpty() || n.matches("(figurinha|reacao|ok|okay|blz|beleza|certo|certinho|show|top|perfeito|ta bom|tá bom|ta|entendi|combinado|valeu|vlw|obg|obrigad[oa]|muito obrigad[oa]|grat[oa]|disponha|por nada|de nada|sim|ss|otimo|joia)( (ok|obrigad[oa]|valeu|entao|pessoal|amigo|amiga|ai|viu|demais))*");
+    }
+
+    /** Chamado novo num grupo que teve outro finalizado nas últimas 24h = retorno (mesmo cliente chamando de novo). */
+    private Long retornoDe(String grupoId, Instant quando) {
+        return chamados.findFirstByGrupoIdAndStatusOrderByFinalizadoEmDesc(grupoId, Chamado.FINALIZADO)
+                .filter(p -> p.getFinalizadoEm() != null && p.getFinalizadoEm().isAfter(quando.minusSeconds(24 * 3600)))
+                .map(Chamado::getId).orElse(null);
     }
 
     /** Equipe mandou mais uma mensagem logo depois de finalizar ("qualquer coisa chama"): não abre outro. */
@@ -277,6 +299,7 @@ public class SuporteService {
     public Map<String, Object> json(Chamado c) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", c.getId());
+        m.put("retornoDe", c.getRetornoDe());
         m.put("grupo", c.getGrupoNome());
         m.put("categoria", categoria(c));
         m.put("cliente", c.getClienteNome());
@@ -458,6 +481,17 @@ public class SuporteService {
                 if (r != null) { a[2] += r; a[3]++; }
             }
         }
+        Map<String, Integer> retornosPor = new HashMap<>();
+        List<Long> anteriores = lista.stream().map(Chamado::getRetornoDe).filter(java.util.Objects::nonNull).toList();
+        Map<Long, Chamado> ant = new HashMap<>();
+        chamados.findAllById(anteriores).forEach(p -> ant.put(p.getId(), p));
+        int retornos = 0;
+        for (Long id : anteriores) {
+            retornos++;
+            Chamado p = ant.get(id);
+            String quem = p == null ? null : p.getFinalizadoPor() != null ? p.getFinalizadoPor() : p.getAtendidoPor();
+            if (quem != null) retornosPor.merge(quem, 1, Integer::sum);
+        }
         List<Map<String, Object>> ranking = new ArrayList<>();
         porAtendente.forEach((nome, a) -> {
             Map<String, Object> x = new LinkedHashMap<>();
@@ -465,6 +499,7 @@ public class SuporteService {
             x.put("atendidos", a[0]);
             x.put("finalizados", a[1]);
             x.put("mediaRespostaMin", a[3] == 0 ? null : a[2] / a[3]);
+            x.put("retornos", retornosPor.getOrDefault(nome, 0)); // chamados que ele finalizou e o cliente voltou em 24h
             ranking.add(x);
         });
         ranking.sort((x, y) -> Long.compare((long) y.get("atendidos"), (long) x.get("atendidos")));
@@ -476,6 +511,7 @@ public class SuporteService {
         out.put("ate", ate.toString());
         out.put("total", lista.size());
         out.put("finalizados", finalizados);
+        out.put("retornos", retornos);
         out.put("emAberto", lista.size() - finalizados);
         out.put("mediaRespostaMin", qtdResp == 0 ? null : somaResp / qtdResp);
         out.put("mediaSolucaoMin", qtdSol == 0 ? null : somaSol / qtdSol);
