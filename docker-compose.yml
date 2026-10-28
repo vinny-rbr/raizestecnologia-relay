@@ -33,9 +33,16 @@ services:
       MAIL_PASSWORD: ${MAIL_PASSWORD}
       MASTER_ALERT_EMAIL: ${MASTER_ALERT_EMAIL}
       LINKPRO_PG_SENHA: ${LINKPRO_PG_SENHA}
+    # rede do Coolify: é onde estão o banco (Postgres do Coolify) e o proxy
+    networks:
+      - coolify
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9090 && printf \"GET /api/health HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q 200 <&3'"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 40s
+
+networks:
+  coolify:
+    external: true
