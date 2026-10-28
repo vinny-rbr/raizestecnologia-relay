@@ -2013,7 +2013,6 @@ shared_preferences
 shared_preferences_android
 shared_preferences_foundation
 shared_preferences_platform_interface
-url_launcher
 url_launcher_android
 url_launcher_ios
 url_launcher_linux
@@ -6226,6 +6225,7 @@ plugin_platform_interface
 shared_preferences_linux
 shared_preferences_web
 shared_preferences_windows
+url_launcher
 url_launcher_platform_interface
 xdg_directories
 
@@ -22177,7 +22177,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 --------------------------------------------------------------------------------
 jni_flutter
-jni_util
 
 Copyright 2026, the Dart project authors.
 
