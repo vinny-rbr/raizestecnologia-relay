@@ -38,6 +38,12 @@ public class SuporteService {
     static final String CFG_TV = "chave_tv";
     static final String CFG_MEU_NOME = "nome_dono";
     static final String CFG_PING = "conector_ping";
+    /** QR do WhatsApp esperando escaneio (o conector manda quando a sessão caiu; vazio = conectado) */
+    static final String CFG_QR = "conector_qr";
+    static final String CFG_QR_EM = "conector_qr_em";
+    /** quando avisou no celular que o conector caiu (não repete até ele voltar) */
+    static final String CFG_ALERTA_CONECTOR = "conector_alerta";
+    static final int CONECTOR_OFF_MIN = 5;
 
     private final ChamadoRepository chamados;
     private final SuporteEquipeRepository equipe;
@@ -438,6 +444,37 @@ public class SuporteService {
                 : ": esperando há " + duracao(Duration.between(c.esperandoDesde(), agora).toMinutes()))).toList());
         fcm.sendToTokens(toks, titulo, corpo, Map.of("tipo", "suporte"));
         log.info("[suporte] aviso de chamado parado: {}", corpo.replace("\n", " | "));
+    }
+
+    /** QR pendente (menos de 2 min) ou null. */
+    public String qrPendente() {
+        String qr = cfg(CFG_QR), em = cfg(CFG_QR_EM);
+        try {
+            return qr != null && !qr.isBlank() && em != null && Instant.parse(em).isAfter(Instant.now().minusSeconds(120)) ? qr : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** A cada minuto: conector sem sinal há 5+ min (WhatsApp caiu, VPS fora, pede QR) vai pro celular do master, uma vez. */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 120_000, fixedDelay = 60_000)
+    public void avisarConector() {
+        if (!fcm.enabled()) return;
+        String p = cfg(CFG_PING), a = cfg(CFG_ALERTA_CONECTOR);
+        Instant ping;
+        try { ping = p == null ? null : Instant.parse(p); } catch (Exception e) { return; }
+        if (ping == null || ping.isAfter(Instant.now().minusSeconds(CONECTOR_OFF_MIN * 60))) return;
+        if (a != null && !a.isBlank() && Instant.parse(a).isAfter(ping)) return; // já avisou desta queda
+        salvarCfg(CFG_ALERTA_CONECTOR, Instant.now().toString());
+        List<Long> donos = users.findByRoleIgnoreCaseAndAtivoTrue("DONO").stream()
+                .map(com.raizestecnologia.relay.auth.AppUser::getId).toList();
+        List<String> toks = tokens.findByUserIdIn(donos).stream()
+                .map(com.raizestecnologia.relay.push.DeviceToken::getToken).distinct().toList();
+        String corpo = qrPendente() != null
+                ? "O WhatsApp foi desconectado e precisa ler o QR Code. Abra o painel > Suporte e escaneie."
+                : "Sem sinal desde " + duracao(Duration.between(ping, Instant.now()).toMinutes()) + ". Mensagem de cliente não está virando chamado.";
+        fcm.sendToTokens(toks, "⚠️ Conector do WhatsApp desligado", corpo, Map.of("tipo", "suporte"));
+        log.info("[suporte] aviso de conector desligado");
     }
 
     /** Texto pronto pra colar no WhatsApp com todos os chamados em aberto. */

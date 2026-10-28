@@ -65,6 +65,17 @@ public class SuporteController {
         return ResponseEntity.ok(ApiEnvelope.ok(Map.of("nomeDono", String.valueOf(svc.cfg(SuporteService.CFG_MEU_NOME)))));
     }
 
+    /** POST /api/suporte-wpp/qr {qr} — sessão caiu e o WhatsApp pede QR: o painel mostra pra escanear. qr vazio = conectou. */
+    @PostMapping("/api/suporte-wpp/qr")
+    public ResponseEntity<Map<String, Object>> qr(@RequestHeader(value = "X-Suporte-Token", required = false) String token,
+                                                  @RequestBody Map<String, Object> b) {
+        if (!svc.tokenOk(token)) return NEGADO;
+        String qr = s(b.get("qr"));
+        svc.salvarCfg(SuporteService.CFG_QR, qr == null ? "" : qr);
+        svc.salvarCfg(SuporteService.CFG_QR_EM, Instant.now().toString());
+        return ResponseEntity.ok(ApiEnvelope.ok(Map.of()));
+    }
+
     private static String s(Object o) { return o == null ? null : o.toString(); }
 
     // ---------- TV ----------
@@ -229,6 +240,7 @@ public class SuporteController {
         out.put("nomeDono", svc.cfg(SuporteService.CFG_MEU_NOME));
         out.put("conectorOnline", conectorOnline());
         out.put("ultimoSinal", svc.cfg(SuporteService.CFG_PING));
+        out.put("qr", svc.qrPendente()); // WhatsApp desconectado esperando escaneio
         return ResponseEntity.ok(ApiEnvelope.ok(out));
     }
 
