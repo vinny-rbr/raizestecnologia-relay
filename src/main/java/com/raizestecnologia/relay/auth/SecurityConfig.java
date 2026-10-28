@@ -83,6 +83,8 @@ public class SecurityConfig {
                 "https://*.vercel.app",
                 "https://vinnytecnologia.com.br",
                 "https://www.vinnytecnologia.com.br",
+                // app web da demo, servido pelo próprio relay em /demo/
+                "https://api.vinnytecnologia.com.br",
                 "http://localhost:*",
                 // tela de mesas servida pelo agente na rede da loja (modo local): pega o passe aqui
                 "http://192.168.*:[*]",
