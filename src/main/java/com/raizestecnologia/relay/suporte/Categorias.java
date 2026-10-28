@@ -22,12 +22,19 @@ final class Categorias {
         PALAVRAS.put("Usuário / senha / acesso", List.of("senha", "usuario", "login", "acesso", "permiss", "bloquead"));
         PALAVRAS.put("Cadastro / preço / estoque", List.of("cadastr", "preco", "estoque", "produto", "codigo de barras", "promocao"));
         PALAVRAS.put("Relatório / financeiro", List.of("relatorio", "fechamento", "financeiro", "contas a", "boleto", "dre", "caixa do dia"));
-        PALAVRAS.put("Lento / sem conexão", List.of("lento", "demor", "fora do ar", "nao conecta", "sem internet", "internet", "servidor", "sem conexao", "offline"));
+        PALAVRAS.put("Lento / sem conexão", List.of("lent", "demor", "fora do ar", "nao conecta", "sem internet", "internet", "servidor", "conexao", "offline"));
         PALAVRAS.put("Caixa / PDV travado", List.of("trav", "pdv", "nao abre", "congel", "fechou sozinho", "tela preta", "nao liga", "erro"));
         PALAVRAS.put("Backup / banco de dados", List.of("backup", "banco de dados", "firebird", "postgres"));
     }
 
     private Categorias() {}
+
+    /** Todas as categorias (pra escolher no painel), "Outros" por último. */
+    static List<String> nomes() {
+        List<String> l = new java.util.ArrayList<>(PALAVRAS.keySet());
+        l.add(OUTROS);
+        return l;
+    }
 
     static String de(String textoCliente) {
         String t = " " + SuporteService.normalizar(textoCliente) + " ";

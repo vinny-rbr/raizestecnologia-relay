@@ -75,6 +75,13 @@ public class Chamado {
     public String getCategoria() { return categoria; }
     public void setCategoria(String v) { this.categoria = v; }
 
+    /** categoria escolhida no painel: o robô não troca mais ao finalizar */
+    @Column(name = "categoria_manual")
+    private Boolean categoriaManual;
+
+    public boolean isCategoriaManual() { return Boolean.TRUE.equals(categoriaManual); }
+    public void setCategoriaManual(boolean v) { this.categoriaManual = v; }
+
     /** última mensagem da equipe no grupo (cliente "esperando" = mandou mensagem depois disso e ninguém respondeu) */
     @Column(name = "ultima_resposta_em")
     private Instant ultimaRespostaEm;

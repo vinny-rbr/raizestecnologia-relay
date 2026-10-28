@@ -144,6 +144,23 @@ public class SuporteController {
         return ResponseEntity.ok(ApiEnvelope.ok(svc.json(c)));
     }
 
+    /** POST .../categoria {categoria} — corrige o problema do chamado (o robô não troca mais). */
+    @PostMapping("/api/admin/suporte/chamados/{id}/categoria")
+    public ResponseEntity<Map<String, Object>> categoria(@PathVariable Long id, @RequestBody(required = false) Map<String, String> b) {
+        Chamado c = chamados.findById(id).orElse(null);
+        if (c == null) return ResponseEntity.status(404).body(ApiEnvelope.fail("Chamado não encontrado"));
+        if (!svc.mudarCategoria(c, b == null ? null : b.get("categoria")))
+            return ResponseEntity.badRequest().body(ApiEnvelope.fail("Categoria inválida"));
+        chamados.save(c);
+        return ResponseEntity.ok(ApiEnvelope.ok(svc.json(c)));
+    }
+
+    /** GET .../categorias — as opções de problema (pra escolher no painel). */
+    @GetMapping("/api/admin/suporte/categorias")
+    public ResponseEntity<Map<String, Object>> categorias() {
+        return ResponseEntity.ok(ApiEnvelope.ok(svc.categorias()));
+    }
+
     /** GET .../chamados/{id}/conversa — mensagens do chamado e o resumo (relatório: clicar no chamado). */
     @GetMapping("/api/admin/suporte/chamados/{id}/conversa")
     public ResponseEntity<Map<String, Object>> conversa(@PathVariable Long id) {

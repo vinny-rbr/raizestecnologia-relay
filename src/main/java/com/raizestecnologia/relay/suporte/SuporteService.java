@@ -129,6 +129,14 @@ public class SuporteService {
         String texto = m.texto() == null ? "" : m.texto().trim();
         String numero = m.autorNumero() == null ? "" : m.autorNumero().replaceAll("\\D", "");
         Optional<Chamado> aberto = chamados.findFirstByGrupoIdAndStatusInOrderByAbertoEmDesc(m.grupoId(), ATIVOS);
+        // em atendimento e parado há mais de 2h (ninguém finalizou): fecha esse e a mensagem abre outro (retorno)
+        if (aberto.isPresent() && parado(aberto.get(), quando)) {
+            Chamado velho = aberto.get();
+            finalizar(velho, velho.getAtendidoPor(), ultimaAtividade(velho));
+            chamados.save(velho);
+            log.info("[suporte] chamado parado finalizado sozinho: {} (#{})", velho.getGrupoNome(), velho.getId());
+            aberto = Optional.empty();
+        }
 
         if (!m.minha() && !numero.isEmpty()) registrarAutor(numero, m.autorNome(), m.grupoNome(), quando);
 
@@ -229,6 +237,26 @@ public class SuporteService {
                 .map(Chamado::getId).orElse(null);
     }
 
+    /** Sem mensagem de ninguém há esse tempo, o próximo contato é outro atendimento. */
+    static final long PARADO_SEG = 2 * 3600;
+
+    /**
+     * Em atendimento e sem mensagem de ninguém há mais de 2h (ex.: cliente "aviso assim que finalizar" e
+     * volta de noite). Cliente esperando resposta não entra (aguardando ou "sem resposta"): esse ainda precisa ser atendido.
+     */
+    private boolean parado(Chamado c, Instant quando) {
+        return Chamado.ATENDIMENTO.equals(c.getStatus())
+                && c.esperandoDesde() == null
+                && ultimaAtividade(c).isBefore(quando.minusSeconds(PARADO_SEG));
+    }
+
+    private static Instant ultimaAtividade(Chamado c) {
+        Instant u = c.getAbertoEm();
+        if (c.getUltimaMensagemEm() != null && c.getUltimaMensagemEm().isAfter(u)) u = c.getUltimaMensagemEm();
+        if (c.getUltimaRespostaEm() != null && c.getUltimaRespostaEm().isAfter(u)) u = c.getUltimaRespostaEm();
+        return u;
+    }
+
     /** Equipe mandou mais uma mensagem logo depois de finalizar ("qualquer coisa chama"): não abre outro. */
     private boolean acabouDeFinalizar(String grupoId, Instant quando) {
         return chamados.findFirstByGrupoIdAndStatusOrderByFinalizadoEmDesc(grupoId, Chamado.FINALIZADO)
@@ -325,6 +353,26 @@ public class SuporteService {
         c.setStatus(Chamado.FINALIZADO);
         c.setFinalizadoPor(nome);
         c.setFinalizadoEm(quando);
+        // no fim, o problema sai da conversa toda: a explicação da equipe costuma dizer a causa
+        // ("entrou em contingência porque a internet está lenta")
+        if (!c.isCategoriaManual() && c.getId() != null) {
+            StringBuilder b = new StringBuilder();
+            for (SuporteMensagem x : mensagens.findByChamadoIdOrderByEmAsc(c.getId())) b.append(' ').append(x.getTexto());
+            String nova = Categorias.de(b.toString());
+            if (!Categorias.OUTROS.equals(nova)) c.setCategoria(nova);
+        }
+    }
+
+    /** Troca o problema pelo painel; o robô não mexe mais nele. */
+    public boolean mudarCategoria(Chamado c, String categoria) {
+        if (categoria == null || !Categorias.nomes().contains(categoria)) return false;
+        c.setCategoria(categoria);
+        c.setCategoriaManual(true);
+        return true;
+    }
+
+    public List<String> categorias() {
+        return Categorias.nomes();
     }
 
     /** Chamado de brincadeira/por engano: sai da TV, dos avisos e dos relatórios (fica guardado como DESCARTADO). */
@@ -424,6 +472,19 @@ public class SuporteService {
     private com.raizestecnologia.relay.push.DeviceTokenRepository tokens;
     @org.springframework.beans.factory.annotation.Autowired
     private com.raizestecnologia.relay.auth.AppUserRepository users;
+
+    /** A cada 5 min: em atendimento e parado há 2h+ sai da TV (finaliza na hora da última mensagem). */
+    @org.springframework.scheduling.annotation.Scheduled(initialDelay = 120_000, fixedDelay = 300_000)
+    @Transactional
+    public void fecharParados() {
+        Instant agora = Instant.now();
+        for (Chamado c : chamados.findByStatusInOrderByAbertoEmAsc(ATIVOS)) {
+            if (!parado(c, agora)) continue;
+            finalizar(c, c.getAtendidoPor(), ultimaAtividade(c));
+            chamados.save(c);
+            log.info("[suporte] chamado parado finalizado sozinho: {} (#{})", c.getGrupoNome(), c.getId());
+        }
+    }
 
     /** A cada minuto: chamado com cliente esperando há 10+ min vai pro celular do master (um aviso só, com todos). */
     @org.springframework.scheduling.annotation.Scheduled(initialDelay = 90_000, fixedDelay = 60_000)
