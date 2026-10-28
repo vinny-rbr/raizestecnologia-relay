@@ -279,12 +279,24 @@ public class SuporteService {
     static String comando(String texto) {
         String t = normalizar(texto);
         // atender não precisa de comando (a 1ª resposta da equipe já marca); estes só passam o chamado pra quem mandou
-        if (t.startsWith("#atendendo") || t.startsWith("#peguei")) return "ATENDER";
-        if (t.startsWith("#finalizado") || t.startsWith("#resolvido") || t.startsWith("#fim")) return "FINALIZAR";
+        if (t.startsWith("#atendendo") || t.startsWith("#peguei")) {
+            return "ATENDER";
+        }
+        if (t.startsWith("#finalizado") || t.startsWith("#resolvido") || t.startsWith("#fim")) {
+            return "FINALIZAR";
+        }
         // do jeito que a equipe já escreve: "chamado finalizado" (ou a mensagem ser só "finalizado")
-        String sem = t.replaceAll("[.!\\s]+$", "");
-        if (sem.matches("chamado (finalizado|encerrado|resolvido|concluido)( .*)?")) return "FINALIZAR";
-        if (sem.matches("(finalizado|encerrado|resolvido|concluido)")) return "FINALIZAR";
+        String sem = t.replaceAll("[^a-z0-9 ]", " ").replaceAll("\\s+", " ").trim();
+        if (sem.matches("chamado (finalizado|encerrado|resolvido|concluido)( .*)?")) {
+            return "FINALIZAR";
+        }
+        if (sem.matches("(finalizado|encerrado|resolvido|concluido)")) {
+            return "FINALIZAR";
+        }
+        // despedida da equipe: "certo, qualquer coisa só chamar" / "qualquer coisa chama a gente"
+        if (sem.matches(".*qualquer (coisa|duvida).*(chama|chamar|chame|avisa|avisar).*")) {
+            return "FINALIZAR";
+        }
         return null;
     }
 
