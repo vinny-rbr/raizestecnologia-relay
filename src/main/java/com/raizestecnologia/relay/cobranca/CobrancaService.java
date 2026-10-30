@@ -334,9 +334,10 @@ public class CobrancaService {
 
     /** Lojas de revenda em teste por mais tempo que as 24h (pedido do Lucas): CNPJ -> ultimo dia (Brasilia). */
     private static final java.util.Map<String, java.time.LocalDate> TESTE_ESTENDIDO = java.util.Map.of(
-            "44875041000105", java.time.LocalDate.of(2026, 10, 31),  // CASA MENDES
-            "63477217000107", java.time.LocalDate.of(2026, 10, 31),  // Agrotom
-            "16479976000129", java.time.LocalDate.of(2026, 11, 1));  // liberado ate 01/11 (pedido 23/10)
+            "44875041000105", java.time.LocalDate.of(2026, 10, 2),  // CASA MENDES
+            "63477217000107", java.time.LocalDate.of(2026, 10, 2),  // Agrotom
+            "16479976000129", java.time.LocalDate.of(2026, 11, 4),  // liberado ate 01/11 (pedido 23/10)
+            "43308385000161", java.time.LocalDate.of(2026,11,4));   //Ceara
 
     /** Ao subir: aplica o teste estendido (ate 23:59 do dia) nas lojas ainda sem pagamento. */
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
