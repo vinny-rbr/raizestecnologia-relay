@@ -29,7 +29,6 @@ public class AgentMonitor {
     private static final Logger log = LoggerFactory.getLogger(AgentMonitor.class);
 
     private final AgentHub hub;
-    private final NotificationService notifier;
     private final long delaySeconds;
 
     private final ScheduledExecutorService scheduler =
@@ -52,10 +51,8 @@ public class AgentMonitor {
     private com.raizestecnologia.relay.saude.SaudeService saude;
 
     public AgentMonitor(AgentHub hub,
-                        NotificationService notifier,
                         @Value("${AGENT_DOWN_ALERT_DELAY_SECONDS:90}") long delaySeconds) {
         this.hub = hub;
-        this.notifier = notifier;
         this.delaySeconds = delaySeconds;
     }
 
@@ -74,8 +71,7 @@ public class AgentMonitor {
             Long desde = caiuEm.remove(cnpj);
             long min = desde == null ? 0 : (System.currentTimeMillis() - desde) / 60_000L;
             log.info("[agent-monitor] {} voltou a ficar online.", nome);
-            notifier.notifyMasterEmail("Loja reconectada",
-                    "O agente de \"" + nome + "\" voltou a ficar online.");
+            // sem e-mail (pedido do Lucas, 06/11/2026): o aviso vai só por push (saúde das lojas)
             saude.registrarCentral(cnpj, "agente_on", "ok", "Computador da loja voltou",
                     "o agente Meu Giro voltou a conectar" + (min > 0 ? " depois de " + min + " min offline" : ""), "agente_off:" + cnpj);
         }
@@ -97,9 +93,7 @@ public class AgentMonitor {
         if (!alertados.add(cnpj)) return;      // ja avisado
         String nome = etiqueta(cnpj);
         log.warn("[agent-monitor] {} esta OFFLINE ha {}s - precisa reiniciar o agente.", nome, delaySeconds);
-        notifier.notifyMasterEmail("Agente offline - reiniciar",
-                "A loja \"" + nome + "\" esta offline ha mais de " + delaySeconds
-                        + "s. Verifique o computador da loja e reinicie o agente (servico Meu Giro).");
+        // sem e-mail (pedido do Lucas, 06/11/2026): o aviso vai só por push (saúde das lojas)
         long desde = System.currentTimeMillis() - delaySeconds * 1000L;
         caiuEm.put(cnpj, desde);
         avisarOffline(cnpj, desde);
