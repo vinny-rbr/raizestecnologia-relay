@@ -58,12 +58,33 @@ public class AsaasClient {
         body.put("name", nome == null || nome.isBlank() ? "Cliente" : nome);
         body.put("cpfCnpj", onlyDigits(cpfCnpj));
         if (email != null && !email.isBlank()) body.put("email", email);
+        // sem e-mail/SMS/WhatsApp do Asaas: evita a "taxa de mensageria" (R$ 0,99 por cobrança)
+        body.put("notificationDisabled", true);
         JsonNode r = post("/customers", body);
-        return r.path("id").asText(null);
+        String id = r.path("id").asText(null);
+        if (id != null) semNotificacao.add(id);
+        return id;
+    }
+
+    // clientes já confirmados sem notificação nesta execução (evita repetir a chamada)
+    private final java.util.Set<String> semNotificacao = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** Desliga as notificações do Asaas num cliente já existente (sem taxa de mensageria).
+     *  Nunca derruba a cobrança: se falhar, só registra no log. */
+    private void desligarNotificacoes(String customerId) {
+        if (customerId == null || customerId.isBlank() || semNotificacao.contains(customerId)) return;
+        try {
+            send("PUT", "/customers/" + customerId, Map.of("notificationDisabled", true));
+            semNotificacao.add(customerId);
+            log.info("[asaas] notificações desligadas no cliente {}", customerId);
+        } catch (Exception e) {
+            log.warn("[asaas] não consegui desligar notificações do cliente {}: {}", customerId, e.getMessage());
+        }
     }
 
     /** Cria uma cobrança avulsa (cliente escolhe Pix/boleto/cartão). Devolve id + link. */
     public Cobranca criarCobranca(String customerId, double valor, LocalDate vencimento, String descricao) throws Exception {
+        desligarNotificacoes(customerId);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("customer", customerId);
         body.put("billingType", "UNDEFINED"); // deixa o cliente escolher a forma
@@ -77,6 +98,7 @@ public class AsaasClient {
 
     /** Cria a assinatura mensal (recorrência automática todo mês). Devolve o id (sub_...). */
     public String criarAssinatura(String customerId, double valor, LocalDate proximoVencimento, String descricao) throws Exception {
+        desligarNotificacoes(customerId);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("customer", customerId);
         body.put("billingType", "UNDEFINED");
@@ -91,17 +113,21 @@ public class AsaasClient {
     // ---- HTTP ----
 
     private JsonNode post(String path, Map<String, Object> body) throws Exception {
+        return send("POST", path, body);
+    }
+
+    private JsonNode send(String method, String path, Map<String, Object> body) throws Exception {
         HttpRequest req = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .header("access_token", apiKey)
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(30))
-                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
+                .method(method, HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
                 .build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         JsonNode node = json.readTree(res.body() == null || res.body().isBlank() ? "{}" : res.body());
         if (res.statusCode() >= 300) {
             String msg = node.path("errors").path(0).path("description").asText(res.body());
-            log.warn("[asaas] POST {} -> {} : {}", path, res.statusCode(), msg);
+            log.warn("[asaas] {} {} -> {} : {}", method, path, res.statusCode(), msg);
             throw new AsaasException(msg);
         }
         return node;
