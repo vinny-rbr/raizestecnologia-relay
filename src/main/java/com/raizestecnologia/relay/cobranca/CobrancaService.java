@@ -511,6 +511,23 @@ public class CobrancaService {
         }
     }
 
+    /** Ajuste único (pedido do Lucas, 06/11/2026): Mini Box Ceará paga R$30 cheio na parcela de 05/11,
+     *  sem o proporcional de R$20. Idempotente: só mexe enquanto o proporcional ainda estiver marcado. */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @Transactional
+    public void ajusteCearaSemProporcional() {
+        try {
+            lojas.findById("43308385000161").ifPresent(l -> {
+                if (l.getRevendaValorProximo() == null) return;
+                l.setRevendaValorProximo(null);
+                lojas.save(l);
+                log.info("[cobranca] Mini Box Ceará: proporcional removido, parcela volta a R$30");
+            });
+        } catch (Exception e) {
+            log.warn("[cobranca] ajuste Ceará falhou: {}", e.getMessage());
+        }
+    }
+
     /** Revendedor pagou os R$30 do mês desta loja ao dono: dá baixa (avança o ciclo) e libera. */
     @Transactional
     public void revendaPagou(String cnpj) {
